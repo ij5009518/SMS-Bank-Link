@@ -1,0 +1,18 @@
+packages:
+  "framer-motion": "For smooth page transitions and micro-interactions"
+  "clsx": "For conditionally joining class names"
+  "tailwind-merge": "For merging tailwind classes without style conflicts"
+  "date-fns": "For formatting dates in the admin dashboard and logs"
+  "recharts": "For rendering beautiful charts in the admin dashboard stats"
+  "react-hook-form": "For robust form state management in registration and settings"
+  "@hookform/resolvers": "For Zod validation integration with react-hook-form"
+
+images:
+  - path: "artifacts/sms-banking/public/images/hero-bg.png"
+    description: "Abstract, very clean, professional, soft gradient background in navy blue and slate gray. Institutional, calm, secure, and trustworthy. Minimalist."
+    aspect_ratio: "16:9"
+
+notes:
+  - Uses API hooks generated in @workspace/api-client-react
+  - Assumes Vite handles the @workspace/api-client-react alias correctly
+  - Emphasizes the read-only nature of the application as requested

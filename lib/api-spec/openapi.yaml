@@ -1,22 +1,33 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: SMS Banking Bridge API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: users
+    description: User registration and management
+  - name: accounts
+    description: Bank account management
+  - name: transactions
+    description: Transaction data
+  - name: sms
+    description: SMS activity logs
+  - name: admin
+    description: Admin operations
+  - name: settings
+    description: Alert settings
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +35,229 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /users/register:
+    post:
+      operationId: registerUser
+      tags: [users]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterUserRequest"
+      responses:
+        "201":
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users (admin)
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserWithAccounts"
+
+  /users/{userId}:
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get a user by ID
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserWithAccounts"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /accounts:
+    post:
+      operationId: linkAccount
+      tags: [accounts]
+      summary: Link a bank account to a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkAccountRequest"
+      responses:
+        "201":
+          description: Account linked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkedAccount"
+
+  /accounts/{userId}:
+    get:
+      operationId: getUserAccounts
+      tags: [accounts]
+      summary: Get accounts for a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LinkedAccount"
+
+  /transactions/{userId}:
+    get:
+      operationId: getUserTransactions
+      tags: [transactions]
+      summary: Get recent transactions for a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: accountId
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: Transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transaction"
+
+  /sms/logs:
+    get:
+      operationId: getSmsLogs
+      tags: [sms]
+      summary: Get SMS activity logs (admin)
+      parameters:
+        - name: userId
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: SMS logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SmsLog"
+
+  /sms/simulate:
+    post:
+      operationId: simulateSms
+      tags: [sms]
+      summary: Simulate an SMS command
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulateSmsRequest"
+      responses:
+        "200":
+          description: SMS response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulateSmsResponse"
+
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      summary: Get admin dashboard stats
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+
+  /settings/alerts:
+    get:
+      operationId: getAlertSettings
+      tags: [settings]
+      summary: Get global alert settings
+      responses:
+        "200":
+          description: Alert settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertSettings"
+    put:
+      operationId: updateAlertSettings
+      tags: [settings]
+      summary: Update global alert settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlertSettings"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertSettings"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +268,277 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+        - message
+
+    RegisterUserRequest:
+      type: object
+      properties:
+        phoneNumber:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        smsConsent:
+          type: boolean
+      required:
+        - phoneNumber
+        - firstName
+        - lastName
+        - smsConsent
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        phoneNumber:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        smsConsent:
+          type: boolean
+        consentDate:
+          type: string
+          format: date-time
+        optedOut:
+          type: boolean
+        onboardingStatus:
+          type: string
+          enum: [pending, bank_linked, active, opted_out]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - phoneNumber
+        - firstName
+        - lastName
+        - smsConsent
+        - optedOut
+        - onboardingStatus
+        - createdAt
+
+    UserWithAccounts:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            accounts:
+              type: array
+              items:
+                $ref: "#/components/schemas/LinkedAccount"
+            lastSmsAt:
+              type: string
+              format: date-time
+              nullable: true
+
+    LinkAccountRequest:
+      type: object
+      properties:
+        userId:
+          type: integer
+        bankName:
+          type: string
+        accountType:
+          type: string
+          enum: [checking, savings, credit]
+        accountLastFour:
+          type: string
+        nickname:
+          type: string
+        currentBalance:
+          type: number
+      required:
+        - userId
+        - bankName
+        - accountType
+        - accountLastFour
+        - nickname
+        - currentBalance
+
+    LinkedAccount:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        bankName:
+          type: string
+        accountType:
+          type: string
+        accountLastFour:
+          type: string
+        nickname:
+          type: string
+        currentBalance:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - bankName
+        - accountType
+        - accountLastFour
+        - nickname
+        - currentBalance
+        - createdAt
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        accountId:
+          type: integer
+        userId:
+          type: integer
+        description:
+          type: string
+        amount:
+          type: number
+        type:
+          type: string
+          enum: [debit, credit]
+        category:
+          type: string
+        merchantName:
+          type: string
+        transactionDate:
+          type: string
+          format: date-time
+        runningBalance:
+          type: number
+      required:
+        - id
+        - accountId
+        - userId
+        - description
+        - amount
+        - type
+        - category
+        - merchantName
+        - transactionDate
+        - runningBalance
+
+    SmsLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        phoneNumber:
+          type: string
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        message:
+          type: string
+        command:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [delivered, pending, failed]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - phoneNumber
+        - direction
+        - message
+        - status
+        - createdAt
+
+    SimulateSmsRequest:
+      type: object
+      properties:
+        userId:
+          type: integer
+        command:
+          type: string
+      required:
+        - userId
+        - command
+
+    SimulateSmsResponse:
+      type: object
+      properties:
+        command:
+          type: string
+        response:
+          type: string
+        logId:
+          type: integer
+      required:
+        - command
+        - response
+        - logId
+
+    AdminStats:
+      type: object
+      properties:
+        totalUsers:
+          type: integer
+        activeUsers:
+          type: integer
+        optedOutUsers:
+          type: integer
+        totalSmsToday:
+          type: integer
+        totalAccountsLinked:
+          type: integer
+        pendingOnboarding:
+          type: integer
+      required:
+        - totalUsers
+        - activeUsers
+        - optedOutUsers
+        - totalSmsToday
+        - totalAccountsLinked
+        - pendingOnboarding
+
+    AlertSettings:
+      type: object
+      properties:
+        alertsEnabled:
+          type: boolean
+        weekendPauseEnabled:
+          type: boolean
+        weekendPauseStart:
+          type: string
+          description: "Day and time to start pause (e.g. friday_14:00)"
+        weekendPauseEnd:
+          type: string
+          description: "Day and time to end pause (e.g. sunday_00:00)"
+        maxDailyAlerts:
+          type: integer
+        lowBalanceThreshold:
+          type: number
+        largeTransactionThreshold:
+          type: number
+      required:
+        - alertsEnabled
+        - weekendPauseEnabled
+        - weekendPauseStart
+        - weekendPauseEnd
+        - maxDailyAlerts
+        - lowBalanceThreshold
+        - largeTransactionThreshold

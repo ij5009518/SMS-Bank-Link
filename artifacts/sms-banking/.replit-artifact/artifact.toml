@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "SMS Banking Bridge"
+version = "1.0.0"
+id = "artifacts/sms-banking"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+localPort = 22714
+name = "web"
+paths = ["/"]
+
+[services.development]
+run = "pnpm --filter @workspace/sms-banking run dev"
+
+[services.env]
+PORT = "22714"
+BASE_PATH = "/"
+
+[services.production]
+build = ["pnpm", "--filter", "@workspace/sms-banking", "run", "build"]
+publicDir = "artifacts/sms-banking/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
