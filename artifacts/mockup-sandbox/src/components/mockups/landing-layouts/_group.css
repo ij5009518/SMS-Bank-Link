@@ -1,0 +1,37 @@
+/* App tokens extracted from artifacts/sms-banking/src/index.css */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap");
+
+:root {
+  --background: 210 20% 98%;
+  --foreground: 217 33% 12%;
+  --border: 214 20% 88%;
+  --card: 0 0% 100%;
+  --card-foreground: 217 33% 12%;
+  --card-border: 214 20% 90%;
+  --sidebar: 218 30% 12%;
+  --sidebar-foreground: 210 15% 90%;
+  --sidebar-border: 218 25% 18%;
+  --sidebar-primary: 213 90% 55%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 218 25% 20%;
+  --sidebar-accent-foreground: 210 15% 90%;
+  --sidebar-ring: 213 90% 55%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 217 33% 12%;
+  --popover-border: 214 20% 88%;
+  --primary: 217 91% 40%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 20% 94%;
+  --secondary-foreground: 217 33% 20%;
+  --muted: 210 20% 95%;
+  --muted-foreground: 215 20% 50%;
+  --accent: 210 20% 92%;
+  --accent-foreground: 217 33% 15%;
+  --destructive: 0 84% 55%;
+  --destructive-foreground: 0 0% 100%;
+  --input: 214 20% 82%;
+  --ring: 217 91% 40%;
+  --radius: 0.5rem;
+  --app-font-sans: 'Inter', sans-serif;
+  --font-sans: var(--app-font-sans);
+}
