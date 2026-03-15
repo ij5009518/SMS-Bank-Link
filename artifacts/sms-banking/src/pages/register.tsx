@@ -381,14 +381,16 @@ export default function RegisterPage() {
                       </p>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-xs bg-amber-100 rounded-lg p-3 text-amber-900">
                         <span className="text-amber-600">Username</span>
-                        <span className="font-bold">user_good</span>
+                        <span className="font-bold">username</span>
                         <span className="text-amber-600">Password</span>
-                        <span className="font-bold">pass_good</span>
-                        <span className="text-amber-600">MFA code</span>
-                        <span className="font-bold">any 6 digits</span>
+                        <span className="font-bold">password</span>
+                        <span className="text-amber-600">OTP code</span>
+                        <span className="font-bold">0000</span>
+                        <span className="text-amber-600">Security answer</span>
+                        <span className="font-bold">blue</span>
                       </div>
                       <p className="text-amber-700 mt-2 text-xs">
-                        Select any bank shown in the list — all are test institutions.
+                        Select any bank from the list, then use the credentials above. MFA steps may vary by bank.
                       </p>
                     </div>
                   )}
