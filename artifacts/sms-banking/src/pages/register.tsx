@@ -148,8 +148,13 @@ export default function RegisterPage() {
       const user = await registerMutation.mutateAsync({ data: values });
       setRegisteredUserId(user.id);
       setStep(2);
-    } catch {
-      userForm.setError("root", { message: "Registration failed. Please try again." });
+    } catch (e: unknown) {
+      const data = (e as { data?: { error?: string; message?: string } })?.data;
+      if (data?.error === "duplicate_phone") {
+        userForm.setError("phoneNumber", { message: data.message });
+      } else {
+        userForm.setError("root", { message: "Registration failed. Please try again." });
+      }
     }
   };
 

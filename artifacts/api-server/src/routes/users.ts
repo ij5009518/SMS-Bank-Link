@@ -22,6 +22,17 @@ router.post("/register", async (req, res) => {
 
     res.status(201).json(user);
   } catch (e: unknown) {
+    const err = e as Record<string, unknown>;
+    const causeErr = err?.cause as Record<string, unknown> | undefined;
+    const pgCode = err?.code || causeErr?.code;
+    const msgStr = String(err?.message || "");
+
+    if (pgCode === "23505" || msgStr.includes("23505") || msgStr.includes("unique")) {
+      return res.status(409).json({
+        error: "duplicate_phone",
+        message: "This phone number is already registered. Please use a different number.",
+      });
+    }
     const message = e instanceof Error ? e.message : "Registration failed";
     res.status(400).json({ error: "bad_request", message });
   }
