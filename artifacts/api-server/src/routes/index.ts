@@ -6,6 +6,7 @@ import transactionsRouter from "./transactions";
 import smsRouter from "./sms";
 import adminRouter from "./admin";
 import settingsRouter from "./settings";
+import tellerRouter from "./teller";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use("/transactions", transactionsRouter);
 router.use("/sms", smsRouter);
 router.use("/admin", adminRouter);
 router.use("/settings", settingsRouter);
+router.use("/teller", tellerRouter);
 
 export default router;

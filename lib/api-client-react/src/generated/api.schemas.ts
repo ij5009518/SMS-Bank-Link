@@ -157,6 +157,45 @@ export interface AlertSettings {
   largeTransactionThreshold: number;
 }
 
+export type TellerConfigEnvironment =
+  (typeof TellerConfigEnvironment)[keyof typeof TellerConfigEnvironment];
+
+export const TellerConfigEnvironment = {
+  sandbox: "sandbox",
+  development: "development",
+  production: "production",
+} as const;
+
+export interface TellerConfig {
+  applicationId: string;
+  environment: TellerConfigEnvironment;
+}
+
+export interface TellerEnrollRequest {
+  userId: number;
+  accessToken: string;
+  enrollmentId: string;
+  institutionName: string;
+}
+
+export interface TellerEnrollResponse {
+  success: boolean;
+  accountsLinked: number;
+  accounts: LinkedAccount[];
+}
+
+export interface TellerAccountSummary {
+  id: string;
+  name: string;
+  type: string;
+  subtype: string;
+  lastFour: string;
+  institutionName: string;
+  availableBalance?: number | null;
+  ledgerBalance?: number | null;
+  status: string;
+}
+
 export type GetUserTransactionsParams = {
   accountId?: number;
   limit?: number;

@@ -219,6 +219,63 @@ export const GetAdminStatsResponse = zod.object({
 });
 
 /**
+ * @summary Get Teller application config for frontend
+ */
+export const GetTellerConfigResponse = zod.object({
+  applicationId: zod.string(),
+  environment: zod.enum(["sandbox", "development", "production"]),
+});
+
+/**
+ * @summary Save Teller enrollment after Connect completes
+ */
+export const TellerEnrollBody = zod.object({
+  userId: zod.number(),
+  accessToken: zod.string(),
+  enrollmentId: zod.string(),
+  institutionName: zod.string(),
+});
+
+export const TellerEnrollResponse = zod.object({
+  success: zod.boolean(),
+  accountsLinked: zod.number(),
+  accounts: zod.array(
+    zod.object({
+      id: zod.number(),
+      userId: zod.number(),
+      bankName: zod.string(),
+      accountType: zod.string(),
+      accountLastFour: zod.string(),
+      nickname: zod.string(),
+      currentBalance: zod.number(),
+      createdAt: zod.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Fetch live Teller accounts for a user
+ */
+export const GetTellerAccountsParams = zod.object({
+  userId: zod.coerce.number(),
+});
+
+export const GetTellerAccountsResponseItem = zod.object({
+  id: zod.string(),
+  name: zod.string(),
+  type: zod.string(),
+  subtype: zod.string(),
+  lastFour: zod.string(),
+  institutionName: zod.string(),
+  availableBalance: zod.number().nullish(),
+  ledgerBalance: zod.number().nullish(),
+  status: zod.string(),
+});
+export const GetTellerAccountsResponse = zod.array(
+  GetTellerAccountsResponseItem,
+);
+
+/**
  * @summary Get global alert settings
  */
 export const GetAlertSettingsResponse = zod.object({

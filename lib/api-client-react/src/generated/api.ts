@@ -29,6 +29,10 @@ import type {
   SimulateSmsRequest,
   SimulateSmsResponse,
   SmsLog,
+  TellerAccountSummary,
+  TellerConfig,
+  TellerEnrollRequest,
+  TellerEnrollResponse,
   Transaction,
   User,
   UserWithAccounts,
@@ -882,6 +886,255 @@ export function useGetAdminStats<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetAdminStatsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get Teller application config for frontend
+ */
+export const getGetTellerConfigUrl = () => {
+  return `/api/teller/config`;
+};
+
+export const getTellerConfig = async (
+  options?: RequestInit,
+): Promise<TellerConfig> => {
+  return customFetch<TellerConfig>(getGetTellerConfigUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTellerConfigQueryKey = () => {
+  return [`/api/teller/config`] as const;
+};
+
+export const getGetTellerConfigQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTellerConfig>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getTellerConfig>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTellerConfigQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getTellerConfig>>> = ({
+    signal,
+  }) => getTellerConfig({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTellerConfig>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTellerConfigQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTellerConfig>>
+>;
+export type GetTellerConfigQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get Teller application config for frontend
+ */
+
+export function useGetTellerConfig<
+  TData = Awaited<ReturnType<typeof getTellerConfig>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getTellerConfig>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTellerConfigQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Save Teller enrollment after Connect completes
+ */
+export const getTellerEnrollUrl = () => {
+  return `/api/teller/enroll`;
+};
+
+export const tellerEnroll = async (
+  tellerEnrollRequest: TellerEnrollRequest,
+  options?: RequestInit,
+): Promise<TellerEnrollResponse> => {
+  return customFetch<TellerEnrollResponse>(getTellerEnrollUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(tellerEnrollRequest),
+  });
+};
+
+export const getTellerEnrollMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof tellerEnroll>>,
+    TError,
+    { data: BodyType<TellerEnrollRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof tellerEnroll>>,
+  TError,
+  { data: BodyType<TellerEnrollRequest> },
+  TContext
+> => {
+  const mutationKey = ["tellerEnroll"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof tellerEnroll>>,
+    { data: BodyType<TellerEnrollRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return tellerEnroll(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TellerEnrollMutationResult = NonNullable<
+  Awaited<ReturnType<typeof tellerEnroll>>
+>;
+export type TellerEnrollMutationBody = BodyType<TellerEnrollRequest>;
+export type TellerEnrollMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Save Teller enrollment after Connect completes
+ */
+export const useTellerEnroll = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof tellerEnroll>>,
+    TError,
+    { data: BodyType<TellerEnrollRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof tellerEnroll>>,
+  TError,
+  { data: BodyType<TellerEnrollRequest> },
+  TContext
+> => {
+  return useMutation(getTellerEnrollMutationOptions(options));
+};
+
+/**
+ * @summary Fetch live Teller accounts for a user
+ */
+export const getGetTellerAccountsUrl = (userId: number) => {
+  return `/api/teller/accounts/${userId}`;
+};
+
+export const getTellerAccounts = async (
+  userId: number,
+  options?: RequestInit,
+): Promise<TellerAccountSummary[]> => {
+  return customFetch<TellerAccountSummary[]>(getGetTellerAccountsUrl(userId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTellerAccountsQueryKey = (userId: number) => {
+  return [`/api/teller/accounts/${userId}`] as const;
+};
+
+export const getGetTellerAccountsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTellerAccounts>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  userId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTellerAccounts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetTellerAccountsQueryKey(userId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTellerAccounts>>
+  > = ({ signal }) => getTellerAccounts(userId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!userId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTellerAccounts>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTellerAccountsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTellerAccounts>>
+>;
+export type GetTellerAccountsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Fetch live Teller accounts for a user
+ */
+
+export function useGetTellerAccounts<
+  TData = Awaited<ReturnType<typeof getTellerAccounts>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  userId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTellerAccounts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTellerAccountsQueryOptions(userId, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

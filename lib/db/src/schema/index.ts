@@ -3,3 +3,4 @@ export * from "./accounts";
 export * from "./transactions";
 export * from "./sms_logs";
 export * from "./settings";
+export * from "./teller_enrollments";

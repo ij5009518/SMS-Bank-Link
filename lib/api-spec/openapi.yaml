@@ -21,6 +21,8 @@ tags:
     description: Admin operations
   - name: settings
     description: Alert settings
+  - name: teller
+    description: Teller bank-link integration
 
 paths:
   /healthz:
@@ -227,6 +229,71 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminStats"
+
+  /teller/config:
+    get:
+      operationId: getTellerConfig
+      tags: [teller]
+      summary: Get Teller application config for frontend
+      responses:
+        "200":
+          description: Teller config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TellerConfig"
+
+  /teller/enroll:
+    post:
+      operationId: tellerEnroll
+      tags: [teller]
+      summary: Save Teller enrollment after Connect completes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TellerEnrollRequest"
+      responses:
+        "200":
+          description: Enrollment saved and accounts synced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TellerEnrollResponse"
+        "400":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teller/accounts/{userId}:
+    get:
+      operationId: getTellerAccounts
+      tags: [teller]
+      summary: Fetch live Teller accounts for a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Live accounts from Teller
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TellerAccountSummary"
+        "404":
+          description: No enrollment found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /settings/alerts:
     get:
@@ -542,3 +609,80 @@ components:
         - maxDailyAlerts
         - lowBalanceThreshold
         - largeTransactionThreshold
+
+    TellerConfig:
+      type: object
+      properties:
+        applicationId:
+          type: string
+        environment:
+          type: string
+          enum: [sandbox, development, production]
+      required:
+        - applicationId
+        - environment
+
+    TellerEnrollRequest:
+      type: object
+      properties:
+        userId:
+          type: integer
+        accessToken:
+          type: string
+        enrollmentId:
+          type: string
+        institutionName:
+          type: string
+      required:
+        - userId
+        - accessToken
+        - enrollmentId
+        - institutionName
+
+    TellerEnrollResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        accountsLinked:
+          type: integer
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/LinkedAccount"
+      required:
+        - success
+        - accountsLinked
+        - accounts
+
+    TellerAccountSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        subtype:
+          type: string
+        lastFour:
+          type: string
+        institutionName:
+          type: string
+        availableBalance:
+          type: number
+          nullable: true
+        ledgerBalance:
+          type: number
+          nullable: true
+        status:
+          type: string
+      required:
+        - id
+        - name
+        - type
+        - subtype
+        - lastFour
+        - institutionName
+        - status
