@@ -35,7 +35,6 @@ router.post("/enroll", async (req, res) => {
     const body = TellerEnrollBody.parse(req.body);
     const { userId, accessToken, enrollmentId, institutionName } = body;
 
-    // Save enrollment
     await db.insert(tellerEnrollmentsTable).values({
       userId,
       enrollmentId,
@@ -43,10 +42,23 @@ router.post("/enroll", async (req, res) => {
       institutionName,
     }).onConflictDoNothing();
 
-    // Fetch accounts from Teller
-    const tellerAccounts = await listAccounts(accessToken);
+    let tellerAccounts;
+    try {
+      tellerAccounts = await listAccounts(accessToken);
+    } catch (fetchErr) {
+      const detail = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+      console.error("[Teller] Failed to list accounts after enrollment:", detail);
+      await db.update(usersTable)
+        .set({ onboardingStatus: "bank_connected" })
+        .where(eq(usersTable.id, userId));
+      return res.json({
+        success: true,
+        accountsLinked: 0,
+        accounts: [],
+        warning: "Bank connected but account sync failed. Accounts will sync on next login.",
+      });
+    }
 
-    // Sync each account into our DB
     const linked = [];
     for (const acct of tellerAccounts) {
       let balance = 0;
@@ -69,7 +81,6 @@ router.post("/enroll", async (req, res) => {
       linked.push({ ...saved, currentBalance: Number(saved.currentBalance) });
     }
 
-    // Update onboarding status
     await db.update(usersTable)
       .set({ onboardingStatus: "active" })
       .where(eq(usersTable.id, userId));
@@ -81,6 +92,7 @@ router.post("/enroll", async (req, res) => {
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Enrollment failed";
+    console.error("[Teller] Enrollment error:", message);
     res.status(400).json({ error: "enroll_failed", message });
   }
 });
