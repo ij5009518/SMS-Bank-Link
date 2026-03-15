@@ -501,9 +501,14 @@ export default function RegisterPage() {
                     </div>
                   </div>
 
-                  <Button className="w-full" onClick={() => setLocation("/")}>
-                    Return to Homepage
-                  </Button>
+                  <div className="flex flex-col gap-3 w-full">
+                    <Button className="w-full" onClick={() => setLocation("/my-account")}>
+                      View My Account
+                    </Button>
+                    <Button variant="outline" className="w-full" onClick={() => setLocation("/")}>
+                      Return to Homepage
+                    </Button>
+                  </div>
                 </div>
               </motion.div>
             )}

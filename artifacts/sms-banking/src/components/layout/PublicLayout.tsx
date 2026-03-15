@@ -25,6 +25,9 @@ export function PublicLayout({ children }: { children: ReactNode }) {
           </div>
 
           <nav className="flex items-center gap-2 md:gap-4">
+            <Link href="/my-account" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
+              My Account
+            </Link>
             <Link href="/admin" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
               Admin Demo
             </Link>
@@ -63,6 +66,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
               <ul className="space-y-3 text-sm text-muted-foreground">
                 <li><Link href="/" className="hover:text-primary transition-colors">How it works</Link></li>
                 <li><Link href="/register" className="hover:text-primary transition-colors">Register</Link></li>
+                <li><Link href="/my-account" className="hover:text-primary transition-colors">My Account</Link></li>
                 <li><Link href="/admin" className="hover:text-primary transition-colors">Admin Dashboard</Link></li>
               </ul>
             </div>

@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 import LandingPage from "./pages/landing";
 import RegisterPage from "./pages/register";
+import MyAccountPage from "./pages/my-account";
 import AdminDashboard from "./pages/admin/dashboard";
 import PrivacyPolicy from "./pages/privacy";
 import TermsOfService from "./pages/terms";
@@ -24,6 +25,7 @@ function Router() {
     <Switch>
       <Route path="/" component={LandingPage} />
       <Route path="/register" component={RegisterPage} />
+      <Route path="/my-account" component={MyAccountPage} />
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/privacy" component={PrivacyPolicy} />
       <Route path="/terms" component={TermsOfService} />

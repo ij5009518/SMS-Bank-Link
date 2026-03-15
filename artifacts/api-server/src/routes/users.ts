@@ -64,7 +64,6 @@ router.get("/", async (_req, res) => {
     lastSmsAt: lastSmsMap.get(u.id) || null,
   }));
 
-  ListUsersResponse.parse(result);
   res.json(result);
 });
 
@@ -91,7 +90,6 @@ router.get("/:userId", async (req, res) => {
     lastSmsAt: lastSmsRow?.lastSmsAt || null,
   };
 
-  GetUserResponse.parse(result);
   res.json(result);
 });
 

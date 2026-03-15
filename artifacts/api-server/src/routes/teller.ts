@@ -20,9 +20,13 @@ router.get("/config", (_req, res) => {
   if (!appId) {
     return res.status(503).json({ error: "not_configured", message: "Teller is not configured" });
   }
+  // TELLER_ENVIRONMENT controls the Connect widget environment.
+  // Use "sandbox" for testing, "development" for real banks with a dev-approved app,
+  // or "production" for a fully approved production app.
+  const environment = (process.env.TELLER_ENVIRONMENT as "sandbox" | "development" | "production") ?? "sandbox";
   res.json({
     applicationId: appId,
-    environment: process.env.NODE_ENV === "production" ? "development" : "sandbox",
+    environment,
   });
 });
 
