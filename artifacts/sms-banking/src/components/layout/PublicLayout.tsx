@@ -28,9 +28,6 @@ export function PublicLayout({ children }: { children: ReactNode }) {
             <Link href="/my-account" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
               My Account
             </Link>
-            <Link href="/admin" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
-              Admin Demo
-            </Link>
             <Link href="/register">
               <Button size="sm" className="rounded-full px-5 hover-elevate">
                 Get Started
@@ -67,7 +64,6 @@ export function PublicLayout({ children }: { children: ReactNode }) {
                 <li><Link href="/" className="hover:text-primary transition-colors">How it works</Link></li>
                 <li><Link href="/register" className="hover:text-primary transition-colors">Register</Link></li>
                 <li><Link href="/my-account" className="hover:text-primary transition-colors">My Account</Link></li>
-                <li><Link href="/admin" className="hover:text-primary transition-colors">Admin Dashboard</Link></li>
               </ul>
             </div>
 

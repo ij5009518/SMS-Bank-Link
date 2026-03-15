@@ -84,11 +84,6 @@ export default function LandingPage() {
                     Register Your Number
                   </Button>
                 </Link>
-                <Link href="/admin">
-                  <Button size="lg" variant="outline" className="rounded-full px-8 text-base h-14 bg-background/50 backdrop-blur hover-elevate">
-                    View Admin Demo
-                  </Button>
-                </Link>
               </div>
             </motion.div>
           </div>
