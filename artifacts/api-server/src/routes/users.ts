@@ -3,17 +3,23 @@ import { db } from "@workspace/db";
 import { usersTable, smsLogsTable, accountsTable } from "@workspace/db/schema";
 import { RegisterUserBody, ListUsersResponse, GetUserResponse } from "@workspace/api-zod";
 import { eq, desc, max } from "drizzle-orm";
+import { hashPassword } from "./auth";
 
 const router: IRouter = Router();
 
 router.post("/register", async (req, res) => {
   try {
     const body = RegisterUserBody.parse(req.body);
+    const rawPassword = (req.body as Record<string, unknown>).password as string | undefined;
+    const passwordHash = rawPassword && rawPassword.length >= 6
+      ? await hashPassword(rawPassword)
+      : undefined;
 
     const [user] = await db.insert(usersTable).values({
       phoneNumber: body.phoneNumber,
       firstName: body.firstName,
       lastName: body.lastName,
+      passwordHash,
       smsConsent: body.smsConsent,
       consentDate: body.smsConsent ? new Date() : null,
       optedOut: false,

@@ -7,10 +7,12 @@ import smsRouter from "./sms";
 import adminRouter from "./admin";
 import settingsRouter from "./settings";
 import tellerRouter from "./teller";
+import authRouter from "./auth";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use("/auth", authRouter);
 router.use("/users", usersRouter);
 router.use("/accounts", accountsRouter);
 router.use("/transactions", transactionsRouter);

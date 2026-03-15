@@ -7,6 +7,7 @@ export const usersTable = pgTable("users", {
   phoneNumber: text("phone_number").notNull().unique(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
+  passwordHash: text("password_hash"),
   smsConsent: boolean("sms_consent").notNull().default(false),
   consentDate: timestamp("consent_date"),
   optedOut: boolean("opted_out").notNull().default(false),

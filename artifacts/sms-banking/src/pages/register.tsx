@@ -12,6 +12,8 @@ import {
   LockKeyhole,
   RefreshCw,
   AlertCircle,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -56,14 +58,20 @@ const userSchema = z.object({
   firstName: z.string().min(2, "First name is required"),
   lastName: z.string().min(2, "Last name is required"),
   phoneNumber: z.string().min(10, "Valid phone number is required"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  confirmPassword: z.string().min(1, "Please confirm your password"),
   smsConsent: z.boolean().refine((val) => val === true, {
     message: "You must consent to receive SMS messages",
   }),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
 });
 
 export default function RegisterPage() {
   const [, setLocation] = useLocation();
   const [step, setStep] = useState(1);
+  const [showPassword, setShowPassword] = useState(false);
   const [registeredUserId, setRegisteredUserId] = useState<number | null>(null);
   const [tellerScriptLoaded, setTellerScriptLoaded] = useState(false);
   const [tellerError, setTellerError] = useState<string | null>(null);
@@ -139,13 +147,17 @@ export default function RegisterPage() {
       firstName: "",
       lastName: "",
       phoneNumber: "",
+      password: "",
+      confirmPassword: "",
       smsConsent: false,
     },
   });
 
   const onUserSubmit = async (values: z.infer<typeof userSchema>) => {
     try {
-      const user = await registerMutation.mutateAsync({ data: values });
+      const user = await registerMutation.mutateAsync({
+        data: { ...values, password: values.password } as Parameters<typeof registerMutation.mutateAsync>[0]["data"],
+      });
       setRegisteredUserId(user.id);
       setStep(2);
     } catch (e: unknown) {
@@ -264,6 +276,40 @@ export default function RegisterPage() {
                           </FormItem>
                         )}
                       />
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={userForm.control}
+                          name="password"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Password</FormLabel>
+                              <FormControl>
+                                <div className="relative">
+                                  <Input type={showPassword ? "text" : "password"} placeholder="••••••" {...field} className="pr-10" />
+                                  <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword((v) => !v)}>
+                                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                  </button>
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={userForm.control}
+                          name="confirmPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Confirm Password</FormLabel>
+                              <FormControl>
+                                <Input type={showPassword ? "text" : "password"} placeholder="••••••" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
 
                       <FormField
                         control={userForm.control}
