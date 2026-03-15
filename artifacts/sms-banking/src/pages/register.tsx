@@ -373,6 +373,26 @@ export default function RegisterPage() {
                     </p>
                   </div>
 
+                  {tellerConfig?.environment === "sandbox" && (
+                    <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm">
+                      <p className="font-semibold text-amber-900 mb-2">🧪 Sandbox mode — use test credentials</p>
+                      <p className="text-amber-800 mb-2">
+                        When the bank login screen appears, use these test credentials:
+                      </p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-xs bg-amber-100 rounded-lg p-3 text-amber-900">
+                        <span className="text-amber-600">Username</span>
+                        <span className="font-bold">user_good</span>
+                        <span className="text-amber-600">Password</span>
+                        <span className="font-bold">pass_good</span>
+                        <span className="text-amber-600">MFA code</span>
+                        <span className="font-bold">any 6 digits</span>
+                      </div>
+                      <p className="text-amber-700 mt-2 text-xs">
+                        Select any bank shown in the list — all are test institutions.
+                      </p>
+                    </div>
+                  )}
+
                   {tellerError && (
                     <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-3">
                       <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
