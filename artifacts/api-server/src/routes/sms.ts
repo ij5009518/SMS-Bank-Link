@@ -110,17 +110,6 @@ router.post("/webhook", async (req, res) => {
       responseText = "Unknown command. Reply HELP for available commands.";
     }
 
-    // Send real SMS reply
-    let smsSid: string | null = null;
-    try {
-      if (normalizedPhone) {
-        const result = await sendSms(normalizedPhone, responseText);
-        smsSid = result?.sid ?? null;
-      }
-    } catch (sendErr) {
-      console.error("[SMS Webhook] Failed to send reply:", sendErr instanceof Error ? sendErr.message : sendErr);
-    }
-
     // Log outbound
     await db.insert(smsLogsTable).values({
       userId: user.id,
@@ -128,11 +117,14 @@ router.post("/webhook", async (req, res) => {
       direction: "outbound",
       message: responseText,
       command: null,
-      status: smsSid ? "sent" : "failed",
+      status: "sent",
     });
 
-    // Respond with empty LaML so SignalWire doesn't auto-reply
-    res.status(200).set("Content-Type", "text/xml").send("<Response></Response>");
+    // Respond with cXML Message — SignalWire delivers it directly (no REST API needed)
+    const escaped = responseText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    res.status(200).set("Content-Type", "text/xml").send(
+      `<Response><Message>${escaped}</Message></Response>`
+    );
   } catch (err) {
     console.error("[SMS Webhook] Error:", err instanceof Error ? err.message : err);
     res.status(200).send("<Response></Response>");
