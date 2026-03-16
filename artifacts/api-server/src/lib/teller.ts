@@ -2,9 +2,6 @@ import https from "https";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const TELLER_API_BASE = "https://api.teller.io";
 const APP_ID = process.env.TELLER_APPLICATION_ID;
@@ -14,11 +11,18 @@ if (!APP_ID) {
   console.warn("[Teller] TELLER_APPLICATION_ID is not set — Teller routes will return errors");
 }
 
-const CERT_FILE = path.resolve(__dirname, "../../certs/teller_certificate.pem");
-const KEY_FILE = path.resolve(__dirname, "../../certs/teller_private_key.pem");
+// In development (tsx), resolve certs relative to the source file.
+// In production (CJS esbuild bundle), import.meta.url is unavailable so we skip
+// file-based certs entirely and rely on TELLER_CERTIFICATE / TELLER_PRIVATE_KEY env vars.
+const CERT_FILE: string | null = process.env.NODE_ENV === "development"
+  ? path.resolve(process.cwd(), "artifacts/api-server/certs/teller_certificate.pem")
+  : null;
+const KEY_FILE: string | null = process.env.NODE_ENV === "development"
+  ? path.resolve(process.cwd(), "artifacts/api-server/certs/teller_private_key.pem")
+  : null;
 
-function loadPem(filePath: string, envVar: string | undefined, label: string): string | null {
-  if (fs.existsSync(filePath)) {
+function loadPem(filePath: string | null, envVar: string | undefined, label: string): string | null {
+  if (filePath && fs.existsSync(filePath)) {
     const content = fs.readFileSync(filePath, "utf8").trim();
     if (content.startsWith("-----BEGIN")) {
       console.log(`[Teller] Loaded ${label} from file: ${path.basename(filePath)}`);
