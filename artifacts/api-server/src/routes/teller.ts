@@ -11,6 +11,7 @@ import {
   listAccounts,
   getBalance,
   getTellerAppId,
+  type TellerAccount,
 } from "../lib/teller.js";
 
 const router: IRouter = Router();
@@ -20,9 +21,6 @@ router.get("/config", (_req, res) => {
   if (!appId) {
     return res.status(503).json({ error: "not_configured", message: "Teller is not configured" });
   }
-  // TELLER_ENVIRONMENT controls the Connect widget environment.
-  // Use "sandbox" for testing, "development" for real banks with a dev-approved app,
-  // or "production" for a fully approved production app.
   const environment = (process.env.TELLER_ENVIRONMENT as "sandbox" | "development" | "production") ?? "sandbox";
   res.json({
     applicationId: appId,
@@ -30,27 +28,68 @@ router.get("/config", (_req, res) => {
   });
 });
 
+async function syncAccountsForEnrollment(
+  userId: number,
+  accessToken: string
+): Promise<{ linked: number; accounts: unknown[] }> {
+  const tellerAccounts = await listAccounts(accessToken);
+
+  const saved = [];
+  for (const acct of tellerAccounts) {
+    let balance = 0;
+    try {
+      const bal = await getBalance(accessToken, acct.id);
+      balance = parseFloat(bal.available ?? bal.ledger ?? "0");
+    } catch {
+      balance = 0;
+    }
+
+    const [row] = await db
+      .insert(accountsTable)
+      .values({
+        userId,
+        tellerAccountId: acct.id,
+        bankName: acct.institution.name,
+        accountType: normalizeAccountType(acct.type, acct.subtype),
+        accountLastFour: acct.last_four,
+        nickname: buildNickname(acct),
+        currentBalance: String(balance),
+      })
+      .onConflictDoUpdate({
+        target: [accountsTable.userId, accountsTable.tellerAccountId],
+        set: {
+          bankName: acct.institution.name,
+          accountType: normalizeAccountType(acct.type, acct.subtype),
+          accountLastFour: acct.last_four,
+          nickname: buildNickname(acct),
+          currentBalance: String(balance),
+        },
+      })
+      .returning();
+
+    saved.push({ ...row, currentBalance: Number(row.currentBalance) });
+  }
+
+  return { linked: saved.length, accounts: saved };
+}
+
 router.post("/enroll", async (req, res) => {
   try {
     const body = TellerEnrollBody.parse(req.body);
     const { userId, accessToken, enrollmentId, institutionName } = body;
 
-    await db.insert(tellerEnrollmentsTable).values({
-      userId,
-      enrollmentId,
-      accessToken,
-      institutionName,
-    }).onConflictDoNothing();
+    await db
+      .insert(tellerEnrollmentsTable)
+      .values({ userId, enrollmentId, accessToken, institutionName })
+      .onConflictDoNothing();
 
-    let tellerAccounts;
+    let result: { linked: number; accounts: unknown[] };
     try {
-      tellerAccounts = await listAccounts(accessToken);
+      result = await syncAccountsForEnrollment(userId, accessToken);
     } catch (fetchErr) {
       const detail = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-      console.error("[Teller] Failed to list accounts after enrollment:", detail);
-      await db.update(usersTable)
-        .set({ onboardingStatus: "bank_connected" })
-        .where(eq(usersTable.id, userId));
+      console.error("[Teller] Failed to sync accounts after enrollment:", detail);
+      await db.update(usersTable).set({ onboardingStatus: "bank_connected" }).where(eq(usersTable.id, userId));
       return res.json({
         success: true,
         accountsLinked: 0,
@@ -59,36 +98,12 @@ router.post("/enroll", async (req, res) => {
       });
     }
 
-    const linked = [];
-    for (const acct of tellerAccounts) {
-      let balance = 0;
-      try {
-        const bal = await getBalance(accessToken, acct.id);
-        balance = parseFloat(bal.available ?? bal.ledger ?? "0");
-      } catch {
-        balance = 0;
-      }
-
-      const [saved] = await db.insert(accountsTable).values({
-        userId,
-        bankName: acct.institution.name,
-        accountType: normalizeAccountType(acct.type, acct.subtype),
-        accountLastFour: acct.last_four,
-        nickname: buildNickname(acct),
-        currentBalance: String(balance),
-      }).returning();
-
-      linked.push({ ...saved, currentBalance: Number(saved.currentBalance) });
-    }
-
-    await db.update(usersTable)
-      .set({ onboardingStatus: "active" })
-      .where(eq(usersTable.id, userId));
+    await db.update(usersTable).set({ onboardingStatus: "active" }).where(eq(usersTable.id, userId));
 
     res.json({
       success: true,
-      accountsLinked: linked.length,
-      accounts: linked,
+      accountsLinked: result.linked,
+      accounts: result.accounts,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Enrollment failed";
@@ -97,51 +112,93 @@ router.post("/enroll", async (req, res) => {
   }
 });
 
+router.post("/sync/:userId", async (req, res) => {
+  const userId = parseInt(req.params.userId);
+  if (isNaN(userId)) {
+    return res.status(400).json({ error: "bad_request", message: "Invalid user ID" });
+  }
+
+  const enrollments = await db
+    .select()
+    .from(tellerEnrollmentsTable)
+    .where(eq(tellerEnrollmentsTable.userId, userId));
+
+  if (enrollments.length === 0) {
+    return res.status(404).json({ error: "not_found", message: "No bank connections found for this user" });
+  }
+
+  let totalLinked = 0;
+  const errors: string[] = [];
+
+  for (const enrollment of enrollments) {
+    try {
+      const { linked } = await syncAccountsForEnrollment(userId, enrollment.accessToken);
+      totalLinked += linked;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[Teller] Sync failed for enrollment ${enrollment.enrollmentId}:`, msg);
+      errors.push(`${enrollment.institutionName}: ${msg}`);
+    }
+  }
+
+  if (totalLinked > 0) {
+    await db.update(usersTable).set({ onboardingStatus: "active" }).where(eq(usersTable.id, userId));
+  }
+
+  res.json({
+    success: true,
+    accountsLinked: totalLinked,
+    errors: errors.length > 0 ? errors : undefined,
+  });
+});
+
 router.get("/accounts/:userId", async (req, res) => {
   const userId = parseInt(req.params.userId);
   if (isNaN(userId)) {
     return res.status(400).json({ error: "bad_request", message: "Invalid user ID" });
   }
 
-  const [enrollment] = await db
+  const enrollments = await db
     .select()
     .from(tellerEnrollmentsTable)
-    .where(eq(tellerEnrollmentsTable.userId, userId))
-    .limit(1);
+    .where(eq(tellerEnrollmentsTable.userId, userId));
 
-  if (!enrollment) {
+  if (enrollments.length === 0) {
     return res.status(404).json({ error: "not_found", message: "No Teller enrollment found for this user" });
   }
 
   try {
-    const tellerAccounts = await listAccounts(enrollment.accessToken);
-
-    const summaries = await Promise.all(
-      tellerAccounts.map(async (acct) => {
-        let availableBalance: number | null = null;
-        let ledgerBalance: number | null = null;
-        try {
-          const bal = await getBalance(enrollment.accessToken, acct.id);
-          availableBalance = parseFloat(bal.available);
-          ledgerBalance = parseFloat(bal.ledger);
-        } catch {
-          // balance unavailable
-        }
-        return {
-          id: acct.id,
-          name: acct.name,
-          type: acct.type,
-          subtype: acct.subtype,
-          lastFour: acct.last_four,
-          institutionName: acct.institution.name,
-          availableBalance,
-          ledgerBalance,
-          status: acct.status,
-        };
+    const allAccounts = await Promise.all(
+      enrollments.map(async (enrollment) => {
+        const tellerAccounts = await listAccounts(enrollment.accessToken);
+        return Promise.all(
+          tellerAccounts.map(async (acct) => {
+            let availableBalance: number | null = null;
+            let ledgerBalance: number | null = null;
+            try {
+              const bal = await getBalance(enrollment.accessToken, acct.id);
+              availableBalance = parseFloat(bal.available);
+              ledgerBalance = parseFloat(bal.ledger);
+            } catch {
+              // balance unavailable
+            }
+            return {
+              id: acct.id,
+              name: acct.name,
+              type: acct.type,
+              subtype: acct.subtype,
+              lastFour: acct.last_four,
+              institutionName: acct.institution.name,
+              availableBalance,
+              ledgerBalance,
+              status: acct.status,
+            };
+          })
+        );
       })
     );
 
-    res.json(summaries);
+    res.json(allAccounts.flat());
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Failed to fetch accounts";
     res.status(500).json({ error: "teller_error", message });
@@ -155,7 +212,7 @@ function normalizeAccountType(type: string, subtype: string): "checking" | "savi
   return "checking";
 }
 
-function buildNickname(acct: { name: string; subtype: string; last_four: string }): string {
+function buildNickname(acct: Pick<TellerAccount, "name" | "subtype" | "last_four">): string {
   const base = acct.subtype || acct.name.split(" ")[0];
   return base.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12) || `acct${acct.last_four}`;
 }

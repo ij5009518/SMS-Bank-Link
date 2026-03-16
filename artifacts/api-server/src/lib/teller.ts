@@ -1,42 +1,54 @@
 import https from "https";
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const TELLER_API_BASE = "https://api.teller.io";
 const APP_ID = process.env.TELLER_APPLICATION_ID;
-const CERT_PEM = process.env.TELLER_CERTIFICATE;
-const KEY_PEM = process.env.TELLER_PRIVATE_KEY;
 const TELLER_ENV = (process.env.TELLER_ENVIRONMENT as "sandbox" | "development" | "production") ?? "sandbox";
 
 if (!APP_ID) {
   console.warn("[Teller] TELLER_APPLICATION_ID is not set — Teller routes will return errors");
 }
 
-function normalizePem(raw: string, label: string): string {
-  let pem = raw.trim();
-  pem = pem.replace(/\\n/g, "\n");
-  pem = pem.replace(/\r\n/g, "\n");
-  pem = pem.replace(/\r/g, "\n");
+const CERT_FILE = path.resolve(__dirname, "../../certs/teller_certificate.pem");
+const KEY_FILE = path.resolve(__dirname, "../../certs/teller_private_key.pem");
+
+function loadPem(filePath: string, envVar: string | undefined, label: string): string | null {
+  if (fs.existsSync(filePath)) {
+    const content = fs.readFileSync(filePath, "utf8").trim();
+    if (content.startsWith("-----BEGIN")) {
+      console.log(`[Teller] Loaded ${label} from file: ${path.basename(filePath)}`);
+      return content;
+    }
+    console.warn(`[Teller] File ${path.basename(filePath)} exists but does not look like a valid PEM — ignoring`);
+  }
+
+  if (!envVar) return null;
+
+  let pem = envVar.trim();
+  pem = pem.replace(/\\n/g, "\n").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   if (pem.startsWith("-----BEGIN")) {
+    console.log(`[Teller] Loaded ${label} from environment variable`);
     return pem;
   }
-  const stripped = pem.replace(/\s+/g, "");
-  if (/^[A-Za-z0-9+/=]+$/.test(stripped)) {
-    const chunks = stripped.match(/.{1,64}/g) || [];
-    return `-----BEGIN ${label}-----\n${chunks.join("\n")}\n-----END ${label}-----`;
-  }
-  return pem;
+  console.warn(`[Teller] ${label} env var does not contain a valid PEM (no -----BEGIN header) — ignoring`);
+  return null;
 }
 
-function validateCertAndKey(certStr: string, keyStr: string): { valid: boolean; error?: string } {
+function validateCertAndKey(cert: string, key: string): { valid: boolean; error?: string } {
   try {
-    new crypto.X509Certificate(certStr);
+    new crypto.X509Certificate(cert);
   } catch (e) {
-    return { valid: false, error: `Certificate is invalid: ${e instanceof Error ? e.message : e}. The TELLER_CERTIFICATE secret must contain the full PEM certificate from your Teller dashboard (starts with -----BEGIN CERTIFICATE-----)` };
+    return { valid: false, error: `Certificate invalid: ${e instanceof Error ? e.message : e}` };
   }
   try {
-    crypto.createPrivateKey(keyStr);
+    crypto.createPrivateKey(key);
   } catch (e) {
-    return { valid: false, error: `Private key is invalid: ${e instanceof Error ? e.message : e}. The TELLER_PRIVATE_KEY secret must contain the full PEM private key from your Teller dashboard (starts with -----BEGIN PRIVATE KEY----- or -----BEGIN RSA PRIVATE KEY-----)` };
+    return { valid: false, error: `Private key invalid: ${e instanceof Error ? e.message : e}` };
   }
   return { valid: true };
 }
@@ -53,13 +65,13 @@ function getTellerAgent(): https.Agent | undefined {
     return undefined;
   }
 
-  if (!CERT_PEM || !KEY_PEM) {
-    console.warn("[Teller] TELLER_CERTIFICATE or TELLER_PRIVATE_KEY is not set — mTLS disabled");
+  const cert = loadPem(CERT_FILE, process.env.TELLER_CERTIFICATE, "certificate");
+  const key = loadPem(KEY_FILE, process.env.TELLER_PRIVATE_KEY, "private key");
+
+  if (!cert || !key) {
+    console.error("[Teller] mTLS certificate or private key missing — Teller API calls will fail. Add teller_certificate.pem and teller_private_key.pem to artifacts/api-server/certs/");
     return undefined;
   }
-
-  const cert = normalizePem(CERT_PEM, "CERTIFICATE");
-  const key = normalizePem(KEY_PEM, "PRIVATE KEY");
 
   const validation = validateCertAndKey(cert, key);
   if (!validation.valid) {
@@ -86,7 +98,7 @@ export async function tellerRequest<T>(
   const agent = getTellerAgent();
 
   if (TELLER_ENV !== "sandbox" && !agent) {
-    throw new Error("Teller mTLS is not configured. Check TELLER_CERTIFICATE and TELLER_PRIVATE_KEY secrets — they must contain full PEM files from the Teller dashboard.");
+    throw new Error("Teller mTLS is not configured — place teller_certificate.pem and teller_private_key.pem in artifacts/api-server/certs/");
   }
 
   const headers: Record<string, string> = {
