@@ -89,12 +89,12 @@ router.post("/enroll", async (req, res) => {
     } catch (fetchErr) {
       const detail = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
       console.error("[Teller] Failed to sync accounts after enrollment:", detail);
-      await db.update(usersTable).set({ onboardingStatus: "bank_connected" }).where(eq(usersTable.id, userId));
+      await db.update(usersTable).set({ onboardingStatus: "bank_linked" }).where(eq(usersTable.id, userId));
       return res.json({
         success: true,
         accountsLinked: 0,
         accounts: [],
-        warning: "Bank connected but account sync failed. Accounts will sync on next login.",
+        warning: "Bank linked but account sync failed. You can retry syncing from your account dashboard.",
       });
     }
 
@@ -167,42 +167,52 @@ router.get("/accounts/:userId", async (req, res) => {
     return res.status(404).json({ error: "not_found", message: "No Teller enrollment found for this user" });
   }
 
-  try {
-    const allAccounts = await Promise.all(
-      enrollments.map(async (enrollment) => {
-        const tellerAccounts = await listAccounts(enrollment.accessToken);
-        return Promise.all(
-          tellerAccounts.map(async (acct) => {
-            let availableBalance: number | null = null;
-            let ledgerBalance: number | null = null;
-            try {
-              const bal = await getBalance(enrollment.accessToken, acct.id);
-              availableBalance = parseFloat(bal.available);
-              ledgerBalance = parseFloat(bal.ledger);
-            } catch {
-              // balance unavailable
-            }
-            return {
-              id: acct.id,
-              name: acct.name,
-              type: acct.type,
-              subtype: acct.subtype,
-              lastFour: acct.last_four,
-              institutionName: acct.institution.name,
-              availableBalance,
-              ledgerBalance,
-              status: acct.status,
-            };
-          })
-        );
-      })
-    );
+  const results = await Promise.allSettled(
+    enrollments.map(async (enrollment) => {
+      const tellerAccounts = await listAccounts(enrollment.accessToken);
+      return Promise.all(
+        tellerAccounts.map(async (acct) => {
+          let availableBalance: number | null = null;
+          let ledgerBalance: number | null = null;
+          try {
+            const bal = await getBalance(enrollment.accessToken, acct.id);
+            availableBalance = parseFloat(bal.available);
+            ledgerBalance = parseFloat(bal.ledger);
+          } catch {
+            // balance unavailable
+          }
+          return {
+            id: acct.id,
+            name: acct.name,
+            type: acct.type,
+            subtype: acct.subtype,
+            lastFour: acct.last_four,
+            institutionName: acct.institution.name,
+            availableBalance,
+            ledgerBalance,
+            status: acct.status,
+          };
+        })
+      );
+    })
+  );
 
-    res.json(allAccounts.flat());
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : "Failed to fetch accounts";
-    res.status(500).json({ error: "teller_error", message });
+  const allAccounts = results
+    .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof listAccounts>>> =>
+      r.status === "fulfilled"
+    )
+    .flatMap((r) => r.value);
+
+  const failedCount = results.filter((r) => r.status === "rejected").length;
+  if (failedCount > 0) {
+    console.warn(`[Teller] /accounts/${userId}: ${failedCount}/${enrollments.length} enrollments failed to fetch`);
   }
+
+  if (allAccounts.length === 0 && failedCount === enrollments.length) {
+    return res.status(502).json({ error: "teller_error", message: "All bank connections failed to respond. Please reconnect your bank." });
+  }
+
+  res.json(allAccounts.flat());
 });
 
 function normalizeAccountType(type: string, subtype: string): "checking" | "savings" | "credit" {
