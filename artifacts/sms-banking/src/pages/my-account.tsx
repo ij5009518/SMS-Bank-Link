@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Building2,
@@ -31,7 +31,20 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { TextBanksLogo } from "@/components/layout/Logo";
-import { useGetUserTransactions, useGetSmsLogs, useGetUser } from "@workspace/api-client-react";
+import { useGetUserTransactions, useGetSmsLogs, useGetUser, useTellerEnroll, useGetTellerConfig } from "@workspace/api-client-react";
+
+declare global {
+  interface Window {
+    TellerConnect?: {
+      setup: (opts: {
+        applicationId: string;
+        environment: string;
+        onSuccess: (enrollment: { accessToken: string; enrollment: { id: string; institution: { name: string } } }) => void;
+        onExit?: () => void;
+      }) => { open: () => void };
+    };
+  }
+}
 
 const SESSION_KEY = "textbank_session";
 
@@ -184,6 +197,78 @@ export default function MyAccountPage() {
       setTimeout(() => setSettingsSaved(false), 3000);
     } catch { setSettingsError("Network error. Please try again."); }
     finally { setSettingsSaving(false); }
+  };
+
+  // ── Teller Connect (inline bank linking) ──
+  const [tellerScriptLoaded, setTellerScriptLoaded] = useState(false);
+  const [bankLinkError, setBankLinkError] = useState<string | null>(null);
+  const [bankLinkSuccess, setBankLinkSuccess] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const tellerConnectRef = useRef<{ open: () => void } | null>(null);
+  const tellerEnrollMutation = useTellerEnroll();
+  const { data: tellerConfig } = useGetTellerConfig({ query: { enabled: !!session } });
+
+  // Load Teller Connect script
+  useEffect(() => {
+    if (document.querySelector('script[src*="teller.io"]')) { setTellerScriptLoaded(true); return; }
+    const script = document.createElement("script");
+    script.src = "https://cdn.teller.io/connect/connect.js";
+    script.async = true;
+    script.onload = () => setTellerScriptLoaded(true);
+    document.head.appendChild(script);
+  }, []);
+
+  // Set up Teller Connect widget when ready
+  useEffect(() => {
+    if (!tellerScriptLoaded || !tellerConfig?.applicationId || !session?.id) return;
+    if (!window.TellerConnect) return;
+    tellerConnectRef.current = window.TellerConnect.setup({
+      applicationId: tellerConfig.applicationId,
+      environment: tellerConfig.environment,
+      onSuccess: async (enrollment) => {
+        setBankLinkError(null);
+        try {
+          const result = await tellerEnrollMutation.mutateAsync({
+            body: {
+              userId: session.id,
+              accessToken: enrollment.accessToken,
+              enrollmentId: enrollment.enrollment.id,
+              institutionName: enrollment.enrollment.institution.name,
+            },
+          });
+          const count = (result as { accountsLinked?: number }).accountsLinked ?? 0;
+          setBankLinkSuccess(`${enrollment.enrollment.institution.name} connected — ${count} account${count !== 1 ? "s" : ""} linked!`);
+          setTimeout(() => setBankLinkSuccess(null), 6000);
+        } catch {
+          setBankLinkError("Bank was linked but account sync failed. Try syncing below.");
+        }
+      },
+      onExit: () => {},
+    });
+  }, [tellerScriptLoaded, tellerConfig, session?.id]);
+
+  const openTellerConnect = () => {
+    setBankLinkError(null);
+    if (tellerConnectRef.current) tellerConnectRef.current.open();
+    else setBankLinkError("Bank connection service is loading. Please try again in a moment.");
+  };
+
+  const handleSyncAccounts = async () => {
+    if (!session) return;
+    setIsSyncing(true);
+    setBankLinkError(null);
+    try {
+      const res = await fetch(`/api/teller/sync/${session.id}`, { method: "POST" });
+      const data = await res.json() as { accountsLinked?: number; errors?: string[] };
+      if (!res.ok) { setBankLinkError("Sync failed. Please reconnect your bank."); return; }
+      const count = data.accountsLinked ?? 0;
+      setBankLinkSuccess(`Sync complete — ${count} account${count !== 1 ? "s" : ""} updated.`);
+      setTimeout(() => setBankLinkSuccess(null), 4000);
+    } catch {
+      setBankLinkError("Network error during sync. Please try again.");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const navItems: { key: Section; label: string; icon: typeof Building2 }[] = [
@@ -403,7 +488,22 @@ export default function MyAccountPage() {
                 <AnimatePresence mode="wait">
                   {/* ── Accounts ── */}
                   {activeSection === "accounts" && (
-                    <motion.div key="accounts" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                    <motion.div key="accounts" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3">
+
+                      {/* Status notifications */}
+                      {bankLinkSuccess && (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
+                          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                          <p className="text-sm text-emerald-800 font-medium">{bankLinkSuccess}</p>
+                        </div>
+                      )}
+                      {bankLinkError && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
+                          <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+                          <p className="text-sm text-red-700">{bankLinkError}</p>
+                        </div>
+                      )}
+
                       {userAccounts.length === 0 ? (
                         <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
                           <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -411,12 +511,26 @@ export default function MyAccountPage() {
                           </div>
                           <h3 className="font-bold text-slate-900 mb-1">No bank accounts linked</h3>
                           <p className="text-sm text-slate-500 mb-5">Link a bank to start checking your balance by text.</p>
-                          <Link href="/register">
-                            <Button className="bg-blue-700 hover:bg-blue-800 text-white rounded-xl px-6">Link a Bank Account</Button>
-                          </Link>
+                          <div className="flex flex-col items-center gap-3">
+                            <Button
+                              onClick={openTellerConnect}
+                              disabled={!tellerScriptLoaded || !tellerConfig || tellerEnrollMutation.isPending}
+                              className="bg-blue-700 hover:bg-blue-800 text-white rounded-xl px-6"
+                            >
+                              {!tellerScriptLoaded ? "Loading…" : tellerEnrollMutation.isPending ? "Connecting…" : "Link a Bank Account"}
+                            </Button>
+                            <button
+                              onClick={handleSyncAccounts}
+                              disabled={isSyncing}
+                              className="text-sm text-slate-500 hover:text-slate-700 hover:underline flex items-center gap-1.5"
+                            >
+                              <RefreshCw className={cn("w-3.5 h-3.5", isSyncing && "animate-spin")} />
+                              {isSyncing ? "Syncing…" : "Already linked? Retry sync"}
+                            </button>
+                          </div>
                         </div>
                       ) : (
-                        <div className="space-y-3">
+                        <>
                           {userAccounts.map((acct) => (
                             <div key={acct.id} className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center justify-between hover:border-blue-200 hover:shadow-sm transition-all">
                               <div className="flex items-center gap-4">
@@ -444,12 +558,24 @@ export default function MyAccountPage() {
                             <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
                             <p className="text-sm text-emerald-800"><strong>Read-only access.</strong> Text Banks can never move money.</p>
                           </div>
-                          <div className="text-center">
-                            <Link href="/register">
-                              <button className="text-sm text-blue-600 hover:underline font-medium">+ Link another bank account</button>
-                            </Link>
+                          <div className="flex items-center justify-between pt-1">
+                            <button
+                              onClick={openTellerConnect}
+                              disabled={!tellerScriptLoaded || !tellerConfig || tellerEnrollMutation.isPending}
+                              className="text-sm text-blue-600 hover:underline font-medium disabled:opacity-50"
+                            >
+                              {tellerEnrollMutation.isPending ? "Connecting…" : "+ Link another bank account"}
+                            </button>
+                            <button
+                              onClick={handleSyncAccounts}
+                              disabled={isSyncing}
+                              className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1.5"
+                            >
+                              <RefreshCw className={cn("w-3.5 h-3.5", isSyncing && "animate-spin")} />
+                              {isSyncing ? "Syncing…" : "Sync balances"}
+                            </button>
                           </div>
-                        </div>
+                        </>
                       )}
                     </motion.div>
                   )}
