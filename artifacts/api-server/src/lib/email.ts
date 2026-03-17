@@ -33,7 +33,9 @@ async function getCredentials(): Promise<{ apiKey: string; fromEmail: string }> 
   }
 
   if (connectionSettings?.settings?.api_key) {
-    const fromEmail = connectionSettings.settings.from_email || "Text Banks <onboarding@resend.dev>";
+    // Always use resend.dev sender — textbanks.com domain is not yet verified in Resend.
+    // Switch to "Text Banks <noreply@textbanks.com>" once the domain is verified at resend.com/domains.
+    const fromEmail = "Text Banks <onboarding@resend.dev>";
     return { apiKey: connectionSettings.settings.api_key, fromEmail };
   }
 
