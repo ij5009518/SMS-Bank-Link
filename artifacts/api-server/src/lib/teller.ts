@@ -35,10 +35,32 @@ function loadPem(filePath: string | null, envVar: string | undefined, label: str
 
   let pem = envVar.trim();
   pem = pem.replace(/\\n/g, "\n").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  // 1. Raw PEM
   if (pem.startsWith("-----BEGIN")) {
-    console.log(`[Teller] Loaded ${label} from environment variable`);
+    console.log(`[Teller] Loaded ${label} from environment variable (raw PEM)`);
     return pem;
   }
+
+  // 2. Base64-encoded PEM — the whole PEM file was base64-encoded before storing
+  try {
+    const decoded = Buffer.from(pem, "base64").toString("utf8").trim();
+    if (decoded.startsWith("-----BEGIN")) {
+      console.log(`[Teller] Loaded ${label} from environment variable (base64-decoded PEM)`);
+      return decoded;
+    }
+  } catch { /* not base64 */ }
+
+  // 3. Raw base64 DER (no headers) — wrap in PEM headers and try
+  const isBase64 = /^[A-Za-z0-9+/=\s]+$/.test(pem);
+  if (isBase64) {
+    const headerType = label.toLowerCase().includes("key") ? "PRIVATE KEY" : "CERTIFICATE";
+    const body = pem.replace(/\s/g, "").match(/.{1,64}/g)?.join("\n") ?? pem;
+    const wrapped = `-----BEGIN ${headerType}-----\n${body}\n-----END ${headerType}-----`;
+    console.log(`[Teller] Loaded ${label} from environment variable (wrapped base64 DER)`);
+    return wrapped;
+  }
+
   console.warn(`[Teller] ${label} env var does not contain a valid PEM (no -----BEGIN header) — ignoring`);
   return null;
 }
