@@ -10,7 +10,6 @@ export function PublicLayout({ children }: { children: ReactNode }) {
 
   const navLinks = [
     { href: "/", label: "Home" },
-    { href: "/my-account", label: "My Account" },
   ];
 
   return (
