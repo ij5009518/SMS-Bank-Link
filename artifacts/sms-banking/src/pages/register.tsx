@@ -18,6 +18,8 @@ import {
   User,
   KeyRound,
   SkipForward,
+  Mail,
+  MessageSquare,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -54,6 +56,7 @@ declare global {
 const schema = z.object({
   firstName: z.string().min(2, "First name is required"),
   lastName: z.string().min(2, "Last name is required"),
+  email: z.string().email("Please enter a valid email address"),
   phoneNumber: z.string().min(10, "Valid phone number is required"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   confirmPassword: z.string().min(1, "Please confirm your password"),
@@ -64,11 +67,23 @@ const schema = z.object({
 });
 
 type FormValues = z.infer<typeof schema>;
+type Stage = "form" | "verify" | "bank" | "done";
 
 export default function RegisterPage() {
-  const [stage, setStage] = useState<"form" | "bank" | "done">("form");
+  const [stage, setStage] = useState<Stage>("form");
   const [showPassword, setShowPassword] = useState(false);
   const [registeredUserId, setRegisteredUserId] = useState<number | null>(null);
+  const [registeredPhone, setRegisteredPhone] = useState("");
+
+  // Verification
+  const [verifyCode, setVerifyCode] = useState(["", "", "", "", "", ""]);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const codeInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+
+  // Teller
   const [tellerScriptLoaded, setTellerScriptLoaded] = useState(false);
   const [tellerError, setTellerError] = useState<string | null>(null);
   const [linkedAccounts, setLinkedAccounts] = useState<{ nickname: string; lastFour: string; bankName: string }[]>([]);
@@ -77,6 +92,13 @@ export default function RegisterPage() {
   const registerMutation = useRegisterUser();
   const tellerEnrollMutation = useTellerEnroll();
   const { data: tellerConfig } = useGetTellerConfig();
+
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => setResendCooldown((v) => Math.max(0, v - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
 
   // Load Teller script
   useEffect(() => {
@@ -123,7 +145,7 @@ export default function RegisterPage() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { firstName: "", lastName: "", phoneNumber: "", password: "", confirmPassword: "", smsConsent: false },
+    defaultValues: { firstName: "", lastName: "", email: "", phoneNumber: "", password: "", confirmPassword: "", smsConsent: false },
   });
 
   const onSubmit = async (values: FormValues) => {
@@ -132,15 +154,96 @@ export default function RegisterPage() {
         data: { ...values } as Parameters<typeof registerMutation.mutateAsync>[0]["data"],
       });
       setRegisteredUserId(user.id);
-      setStage("bank");
+      setRegisteredPhone(values.phoneNumber);
+      setStage("verify");
+      // Focus first code box
+      setTimeout(() => codeInputRefs.current[0]?.focus(), 100);
     } catch (e: unknown) {
       const data = (e as { data?: { error?: string; message?: string } })?.data;
       if (data?.error === "duplicate_phone") {
         form.setError("phoneNumber", { message: data.message });
+      } else if (data?.error === "duplicate_email") {
+        form.setError("email", { message: data.message });
       } else {
         form.setError("root", { message: "Registration failed. Please try again." });
       }
     }
+  };
+
+  // Handle 6-digit code input
+  const handleCodeChange = (index: number, value: string) => {
+    const char = value.replace(/\D/g, "").slice(-1);
+    const newCode = [...verifyCode];
+    newCode[index] = char;
+    setVerifyCode(newCode);
+    setVerifyError(null);
+    if (char && index < 5) {
+      codeInputRefs.current[index + 1]?.focus();
+    }
+    // Auto-submit when all 6 digits entered
+    if (char && index === 5) {
+      const full = [...newCode.slice(0, 5), char].join("");
+      if (full.length === 6) submitVerification(full);
+    }
+  };
+
+  const handleCodeKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace" && !verifyCode[index] && index > 0) {
+      codeInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleCodePaste = (e: React.ClipboardEvent) => {
+    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (text.length === 6) {
+      setVerifyCode(text.split(""));
+      setVerifyError(null);
+      setTimeout(() => submitVerification(text), 100);
+    }
+  };
+
+  const submitVerification = async (code?: string) => {
+    const finalCode = code ?? verifyCode.join("");
+    if (finalCode.length < 6) { setVerifyError("Please enter the full 6-digit code."); return; }
+    if (!registeredUserId) return;
+    setVerifyLoading(true);
+    setVerifyError(null);
+    try {
+      const res = await fetch("/api/auth/verify-phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: registeredUserId, code: finalCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setVerifyError(data.message || "Invalid code. Please try again.");
+        setVerifyCode(["", "", "", "", "", ""]);
+        codeInputRefs.current[0]?.focus();
+        return;
+      }
+      setStage("bank");
+    } catch {
+      setVerifyError("Network error. Please try again.");
+    } finally {
+      setVerifyLoading(false);
+    }
+  };
+
+  const resendCode = async () => {
+    if (!registeredUserId || resendCooldown > 0) return;
+    setResendLoading(true);
+    setVerifyError(null);
+    try {
+      await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: registeredUserId }),
+      });
+      setResendCooldown(60);
+      setVerifyCode(["", "", "", "", "", ""]);
+      setTimeout(() => codeInputRefs.current[0]?.focus(), 100);
+    } catch { setVerifyError("Could not resend. Please try again."); }
+    finally { setResendLoading(false); }
   };
 
   const openTellerConnect = () => {
@@ -152,11 +255,20 @@ export default function RegisterPage() {
     }
   };
 
+  // Step indicators
+  const steps: { key: Stage; label: string }[] = [
+    { key: "form", label: "Account" },
+    { key: "verify", label: "Verify" },
+    { key: "bank", label: "Bank" },
+    { key: "done", label: "Done" },
+  ];
+  const stageIndex = { form: 0, verify: 1, bank: 2, done: 3 } as Record<Stage, number>;
+
   return (
     <PublicLayout>
       <div className="flex-1 flex flex-col items-center justify-center py-12 px-4 bg-slate-50 min-h-screen">
         {/* Brand */}
-        <div className="flex flex-col items-center mb-8">
+        <div className="flex flex-col items-center mb-6">
           <div className="flex items-center gap-2.5 mb-1.5">
             <TextBanksLogo size={32} />
             <span className="font-display font-bold text-xl text-slate-900">Text Banks</span>
@@ -164,22 +276,42 @@ export default function RegisterPage() {
           <p className="text-sm text-slate-500">Create your account</p>
         </div>
 
+        {/* Step progress */}
+        <div className="flex items-center gap-1 mb-8">
+          {steps.map((s, i) => {
+            const current = stageIndex[stage];
+            const done = i < current;
+            const active = i === current;
+            return (
+              <div key={s.key} className="flex items-center">
+                <div className="flex flex-col items-center">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
+                    done ? "bg-emerald-500 border-emerald-500 text-white" :
+                    active ? "bg-blue-700 border-blue-700 text-white" :
+                    "bg-white border-slate-300 text-slate-400"
+                  }`}>
+                    {done ? <CheckCircle className="w-4 h-4" /> : i + 1}
+                  </div>
+                  <span className={`text-xs mt-1 font-medium ${active ? "text-blue-700" : done ? "text-emerald-600" : "text-slate-400"}`}>
+                    {s.label}
+                  </span>
+                </div>
+                {i < steps.length - 1 && (
+                  <div className={`w-8 h-0.5 mx-1 mb-4 transition-all ${i < current ? "bg-emerald-400" : "bg-slate-200"}`} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
         <AnimatePresence mode="wait">
           {/* ── Stage 1: Registration form ── */}
           {stage === "form" && (
-            <motion.div
-              key="form"
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -16 }}
-              className="w-full max-w-md"
-            >
+            <motion.div key="form" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} className="w-full max-w-md">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="px-7 pt-7 pb-5">
                   <h2 className="text-xl font-bold text-slate-900 mb-1">Create your account</h2>
-                  <p className="text-sm text-slate-500">
-                    Enter your details to get started. No credit card required.
-                  </p>
+                  <p className="text-sm text-slate-500">Enter your details to get started. No credit card required.</p>
                 </div>
 
                 <Form {...form}>
@@ -210,6 +342,21 @@ export default function RegisterPage() {
                         )} />
                       </div>
 
+                      {/* Email */}
+                      <FormField control={form.control} name="email" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-semibold text-slate-700">Email Address</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                              <Input type="email" placeholder="jane@example.com" {...field} className="pl-9 h-10 border-slate-200 rounded-xl text-sm" />
+                            </div>
+                          </FormControl>
+                          <FormDescription className="text-xs text-slate-400">We'll send a welcome email here.</FormDescription>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )} />
+
                       {/* Phone */}
                       <FormField control={form.control} name="phoneNumber" render={({ field }) => (
                         <FormItem>
@@ -221,7 +368,7 @@ export default function RegisterPage() {
                             </div>
                           </FormControl>
                           <FormDescription className="text-xs text-slate-400">
-                            Text this number to check your balance anytime.
+                            We'll text a verification code to this number.
                           </FormDescription>
                           <FormMessage className="text-xs" />
                         </FormItem>
@@ -235,17 +382,10 @@ export default function RegisterPage() {
                             <FormControl>
                               <div className="relative">
                                 <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                <Input
-                                  type={showPassword ? "text" : "password"}
-                                  placeholder="••••••"
-                                  {...field}
-                                  className="pl-9 pr-9 h-10 border-slate-200 rounded-xl text-sm"
-                                />
-                                <button
-                                  type="button"
-                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                                  onClick={() => setShowPassword((v) => !v)}
-                                >
+                                <Input type={showPassword ? "text" : "password"} placeholder="••••••" {...field}
+                                  className="pl-9 pr-9 h-10 border-slate-200 rounded-xl text-sm" />
+                                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                  onClick={() => setShowPassword((v) => !v)}>
                                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                 </button>
                               </div>
@@ -257,12 +397,8 @@ export default function RegisterPage() {
                           <FormItem>
                             <FormLabel className="text-xs font-semibold text-slate-700">Confirm</FormLabel>
                             <FormControl>
-                              <Input
-                                type={showPassword ? "text" : "password"}
-                                placeholder="••••••"
-                                {...field}
-                                className="h-10 border-slate-200 rounded-xl text-sm"
-                              />
+                              <Input type={showPassword ? "text" : "password"} placeholder="••••••" {...field}
+                                className="h-10 border-slate-200 rounded-xl text-sm" />
                             </FormControl>
                             <FormMessage className="text-xs" />
                           </FormItem>
@@ -297,16 +433,12 @@ export default function RegisterPage() {
                     </div>
 
                     <div className="px-7 py-5 mt-4 border-t border-slate-100">
-                      <Button
-                        type="submit"
-                        className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-11 font-semibold group"
-                        disabled={registerMutation.isPending}
-                      >
-                        {registerMutation.isPending ? (
-                          <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Creating account…</>
-                        ) : (
-                          <>Create Account <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" /></>
-                        )}
+                      <Button type="submit" className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-11 font-semibold group"
+                        disabled={registerMutation.isPending}>
+                        {registerMutation.isPending
+                          ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Creating account…</>
+                          : <>Create Account <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" /></>
+                        }
                       </Button>
                       <p className="text-xs text-center text-slate-400 mt-3">
                         Already have an account?{" "}
@@ -316,29 +448,81 @@ export default function RegisterPage() {
                   </form>
                 </Form>
               </div>
-
-              <p className="mt-5 text-xs text-center text-slate-400">
-                By signing up, you agree to our{" "}
-                <Link href="/terms" className="text-blue-600 hover:underline">Terms</Link>
-                {" & "}
-                <Link href="/privacy" className="text-blue-600 hover:underline">Privacy Policy</Link>.
-              </p>
             </motion.div>
           )}
 
-          {/* ── Stage 2: Optional bank connect ── */}
+          {/* ── Stage 2: Phone verification ── */}
+          {stage === "verify" && (
+            <motion.div key="verify" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} className="w-full max-w-sm">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-7 pt-7 pb-5 text-center">
+                  <div className="w-14 h-14 bg-blue-50 border border-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <MessageSquare className="w-7 h-7 text-blue-700" />
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-900 mb-1">Check your phone</h2>
+                  <p className="text-sm text-slate-500">
+                    We sent a 6-digit code to{" "}
+                    <span className="font-semibold text-slate-700">{registeredPhone}</span>
+                  </p>
+                </div>
+
+                <div className="px-7 pb-6">
+                  {/* 6-digit code boxes */}
+                  <div className="flex gap-2 justify-center mb-4" onPaste={handleCodePaste}>
+                    {verifyCode.map((digit, i) => (
+                      <input
+                        key={i}
+                        ref={(el) => { codeInputRefs.current[i] = el; }}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={digit}
+                        onChange={(e) => handleCodeChange(i, e.target.value)}
+                        onKeyDown={(e) => handleCodeKeyDown(i, e)}
+                        className={`w-11 h-14 text-center text-xl font-bold rounded-xl border-2 outline-none transition-all ${
+                          verifyError ? "border-red-400 bg-red-50" :
+                          digit ? "border-blue-500 bg-blue-50 text-blue-900" :
+                          "border-slate-200 bg-white text-slate-900 focus:border-blue-400 focus:bg-blue-50/50"
+                        }`}
+                      />
+                    ))}
+                  </div>
+
+                  {verifyError && (
+                    <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 mb-4">
+                      <AlertCircle className="w-4 h-4 shrink-0" />{verifyError}
+                    </div>
+                  )}
+
+                  <Button className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-11 font-semibold mb-3"
+                    onClick={() => submitVerification()} disabled={verifyLoading || verifyCode.join("").length < 6}>
+                    {verifyLoading ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Verifying…</> : "Verify Phone Number"}
+                  </Button>
+
+                  <div className="flex items-center justify-between text-xs text-slate-500">
+                    <span>Didn't get a code?</span>
+                    <button onClick={resendCode} disabled={resendLoading || resendCooldown > 0}
+                      className="text-blue-600 hover:underline font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                      {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : resendLoading ? "Sending…" : "Resend code"}
+                    </button>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-slate-100 text-center">
+                    <button onClick={() => setStage("bank")} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
+                      Skip verification for now →
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── Stage 3: Optional bank connect ── */}
           {stage === "bank" && (
-            <motion.div
-              key="bank"
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -16 }}
-              className="w-full max-w-md"
-            >
-              {/* Success indicator */}
+            <motion.div key="bank" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} className="w-full max-w-md">
               <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-3.5 mb-4">
                 <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
-                <p className="text-sm font-semibold text-emerald-800">Account created! One more optional step.</p>
+                <p className="text-sm font-semibold text-emerald-800">Phone verified! One more optional step.</p>
               </div>
 
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -350,7 +534,6 @@ export default function RegisterPage() {
                 </div>
 
                 <div className="px-7 space-y-4">
-                  {/* Trust badges */}
                   <div className="grid grid-cols-3 gap-3">
                     {[
                       { icon: LockKeyhole, label: "Bank-grade TLS" },
@@ -364,14 +547,6 @@ export default function RegisterPage() {
                         <span className="text-xs text-slate-500 font-medium leading-tight">{label}</span>
                       </div>
                     ))}
-                  </div>
-
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-600 space-y-1.5">
-                    <p className="font-semibold text-slate-800">What we access:</p>
-                    <p className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> Account names and last 4 digits</p>
-                    <p className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> Current balance (read-only)</p>
-                    <p className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> Recent transaction history (read-only)</p>
-                    <p className="text-slate-500 pt-1 border-t border-slate-200">We <strong>never</strong> store your credentials or move money.</p>
                   </div>
 
                   {tellerConfig?.environment === "sandbox" && (
@@ -388,11 +563,9 @@ export default function RegisterPage() {
 
                   {tellerError && (
                     <div className="flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
-                      <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                      {tellerError}
+                      <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />{tellerError}
                     </div>
                   )}
-
                   {tellerEnrollMutation.isPending && (
                     <div className="flex items-center justify-center gap-2 text-sm text-slate-500 py-3">
                       <RefreshCw className="w-4 h-4 animate-spin" /> Syncing your accounts…
@@ -401,21 +574,16 @@ export default function RegisterPage() {
                 </div>
 
                 <div className="px-7 py-5 mt-4 border-t border-slate-100 space-y-3">
-                  <Button
-                    className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-11 font-semibold"
+                  <Button className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-11 font-semibold"
                     onClick={openTellerConnect}
-                    disabled={!tellerScriptLoaded || !tellerConfig || tellerEnrollMutation.isPending}
-                  >
-                    {!tellerScriptLoaded ? (
-                      <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Loading…</>
-                    ) : (
-                      <><Building2 className="w-4 h-4 mr-2" /> Connect Your Bank</>
-                    )}
+                    disabled={!tellerScriptLoaded || !tellerConfig || tellerEnrollMutation.isPending}>
+                    {!tellerScriptLoaded
+                      ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Loading…</>
+                      : <><Building2 className="w-4 h-4 mr-2" /> Connect Your Bank</>
+                    }
                   </Button>
-                  <button
-                    onClick={() => setStage("done")}
-                    className="w-full flex items-center justify-center gap-2 text-sm text-slate-500 hover:text-slate-700 transition-colors py-2"
-                  >
+                  <button onClick={() => setStage("done")}
+                    className="w-full flex items-center justify-center gap-2 text-sm text-slate-500 hover:text-slate-700 transition-colors py-2">
                     <SkipForward className="w-4 h-4" />
                     Skip for now — I'll do this later
                   </button>
@@ -424,14 +592,9 @@ export default function RegisterPage() {
             </motion.div>
           )}
 
-          {/* ── Stage 3: Done ── */}
+          {/* ── Stage 4: Done ── */}
           {stage === "done" && (
-            <motion.div
-              key="done"
-              initial={{ opacity: 0, scale: 0.97 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="w-full max-w-md"
-            >
+            <motion.div key="done" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="p-10 text-center flex flex-col items-center">
                   <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mb-6">
@@ -444,6 +607,11 @@ export default function RegisterPage() {
                       : "Your account is ready. Link a bank anytime from your account settings."}
                   </p>
 
+                  <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 text-left">
+                    <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Check your email</p>
+                    <p className="text-sm text-slate-600">We sent a welcome email with your SMS commands and account details.</p>
+                  </div>
+
                   {linkedAccounts.length > 0 && (
                     <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 text-left">
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Linked Accounts</p>
@@ -451,19 +619,15 @@ export default function RegisterPage() {
                         {linkedAccounts.map((a) => (
                           <div key={a.lastFour} className="flex items-center justify-between text-sm">
                             <span className="font-medium text-slate-700">
-                              {a.bankName}{" "}
-                              <span className="text-slate-400 font-normal">••••{a.lastFour}</span>
+                              {a.bankName} <span className="text-slate-400 font-normal">••••{a.lastFour}</span>
                             </span>
-                            <code className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded font-mono">
-                              BAL {a.nickname}
-                            </code>
+                            <code className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded font-mono">BAL {a.nickname}</code>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  {/* Command cheat sheet */}
                   <div className="w-full bg-slate-900 rounded-xl p-5 mb-7 text-left">
                     <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-3">SMS Commands</p>
                     <div className="grid grid-cols-2 gap-2 text-xs">
@@ -478,14 +642,10 @@ export default function RegisterPage() {
 
                   <div className="flex flex-col sm:flex-row gap-3 w-full">
                     <Link href="/my-account" className="flex-1">
-                      <Button className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 text-sm font-semibold">
-                        Go to My Account
-                      </Button>
+                      <Button className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 text-sm font-semibold">Go to My Account</Button>
                     </Link>
                     <Link href="/" className="flex-1">
-                      <Button variant="outline" className="w-full border-slate-200 rounded-xl h-10 text-sm">
-                        Back to Home
-                      </Button>
+                      <Button variant="outline" className="w-full border-slate-200 rounded-xl h-10 text-sm">Back to Home</Button>
                     </Link>
                   </div>
                 </div>

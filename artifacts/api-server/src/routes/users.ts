@@ -4,6 +4,12 @@ import { usersTable, smsLogsTable, accountsTable } from "@workspace/db/schema";
 import { RegisterUserBody, ListUsersResponse, GetUserResponse } from "@workspace/api-zod";
 import { eq, desc, max } from "drizzle-orm";
 import { hashPassword } from "./auth";
+import { sendSms, normalizeE164 } from "../lib/signalwire.js";
+import { sendWelcomeEmail } from "../lib/email.js";
+
+function generateVerificationCode(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 const router: IRouter = Router();
 
@@ -11,12 +17,19 @@ router.post("/register", async (req, res) => {
   try {
     const body = RegisterUserBody.parse(req.body);
     const rawPassword = (req.body as Record<string, unknown>).password as string | undefined;
+    const rawEmail = (req.body as Record<string, unknown>).email as string | undefined;
     const passwordHash = rawPassword && rawPassword.length >= 6
       ? await hashPassword(rawPassword)
       : undefined;
 
+    const normalizedPhone = body.phoneNumber.replace(/\D/g, "");
+    const normalizedEmail = rawEmail?.trim().toLowerCase() || null;
+    const verificationCode = generateVerificationCode();
+    const verificationExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
     const [user] = await db.insert(usersTable).values({
-      phoneNumber: body.phoneNumber,
+      phoneNumber: normalizedPhone,
+      email: normalizedEmail,
       firstName: body.firstName,
       lastName: body.lastName,
       passwordHash,
@@ -24,9 +37,26 @@ router.post("/register", async (req, res) => {
       consentDate: body.smsConsent ? new Date() : null,
       optedOut: false,
       onboardingStatus: "pending",
+      phoneVerified: false,
+      phoneVerificationCode: verificationCode,
+      phoneVerificationExpiry: verificationExpiry,
     }).returning();
 
-    res.status(201).json(user);
+    // Send SMS verification (fire-and-forget)
+    const e164 = normalizeE164(normalizedPhone);
+    if (e164) {
+      sendSms(e164, `Your Text Banks verification code is: ${verificationCode}\n\nThis code expires in 10 minutes.`)
+        .catch((err) => console.error("[Register] SMS send failed:", err instanceof Error ? err.message : err));
+    }
+
+    // Send welcome email (fire-and-forget)
+    if (normalizedEmail) {
+      sendWelcomeEmail(normalizedEmail, body.firstName, normalizedPhone)
+        .catch((err) => console.error("[Register] Email send failed:", err instanceof Error ? err.message : err));
+    }
+
+    const { phoneVerificationCode: _vc, ...safeUser } = user as typeof user & { phoneVerificationCode?: string };
+    res.status(201).json(safeUser);
   } catch (e: unknown) {
     const err = e as Record<string, unknown>;
     const causeErr = err?.cause as Record<string, unknown> | undefined;
@@ -34,6 +64,9 @@ router.post("/register", async (req, res) => {
     const msgStr = String(err?.message || "");
 
     if (pgCode === "23505" || msgStr.includes("23505") || msgStr.includes("unique")) {
+      if (msgStr.toLowerCase().includes("email")) {
+        return res.status(409).json({ error: "duplicate_email", message: "This email is already registered. Try signing in instead." });
+      }
       return res.status(409).json({
         error: "duplicate_phone",
         message: "This phone number is already registered. Please use a different number.",

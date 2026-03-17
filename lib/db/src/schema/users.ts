@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   phoneNumber: text("phone_number").notNull().unique(),
+  email: text("email").unique(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   passwordHash: text("password_hash"),
@@ -12,6 +13,9 @@ export const usersTable = pgTable("users", {
   consentDate: timestamp("consent_date"),
   optedOut: boolean("opted_out").notNull().default(false),
   onboardingStatus: text("onboarding_status").notNull().default("pending"),
+  phoneVerified: boolean("phone_verified").notNull().default(false),
+  phoneVerificationCode: text("phone_verification_code"),
+  phoneVerificationExpiry: timestamp("phone_verification_expiry"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

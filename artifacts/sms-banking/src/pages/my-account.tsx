@@ -21,8 +21,8 @@ import {
   BellOff,
   Zap,
   RefreshCw,
-  ExternalLink,
   Check,
+  Mail,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -84,6 +84,7 @@ export default function MyAccountPage() {
   // Sign-up
   const [signUpFirst, setSignUpFirst] = useState("");
   const [signUpLast, setSignUpLast] = useState("");
+  const [signUpEmail, setSignUpEmail] = useState("");
   const [signUpPhone, setSignUpPhone] = useState("");
   const [signUpPassword, setSignUpPassword] = useState("");
   const [signUpConfirm, setSignUpConfirm] = useState("");
@@ -140,6 +141,7 @@ export default function MyAccountPage() {
   const handleSignUp = async () => {
     setError(null);
     if (!signUpFirst || !signUpLast || !signUpPhone || !signUpPassword) { setError("Please fill in all fields."); return; }
+    if (signUpEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signUpEmail)) { setError("Please enter a valid email address."); return; }
     if (signUpPassword.length < 6) { setError("Password must be at least 6 characters."); return; }
     if (signUpPassword !== signUpConfirm) { setError("Passwords do not match."); return; }
     if (!signUpConsent) { setError("You must agree to receive SMS messages."); return; }
@@ -147,7 +149,7 @@ export default function MyAccountPage() {
     try {
       const res = await fetch("/api/auth/signup", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firstName: signUpFirst, lastName: signUpLast, phoneNumber: signUpPhone, password: signUpPassword, smsConsent: true }),
+        body: JSON.stringify({ firstName: signUpFirst, lastName: signUpLast, email: signUpEmail || undefined, phoneNumber: signUpPhone, password: signUpPassword, smsConsent: true }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message || "Sign up failed."); return; }
@@ -276,6 +278,13 @@ export default function MyAccountPage() {
                           <div className="space-y-1.5">
                             <label className="text-xs font-semibold text-slate-700">Last Name</label>
                             <Input placeholder="Doe" value={signUpLast} onChange={(e) => { setSignUpLast(e.target.value); setError(null); }} className="h-10 border-slate-200 rounded-xl text-sm" />
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-slate-700">Email Address <span className="text-slate-400 font-normal">(optional)</span></label>
+                          <div className="relative">
+                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <Input type="email" placeholder="jane@example.com" value={signUpEmail} onChange={(e) => { setSignUpEmail(e.target.value); setError(null); }} className="pl-9 h-10 border-slate-200 rounded-xl text-sm" />
                           </div>
                         </div>
                         <div className="space-y-1.5">

@@ -21,6 +21,7 @@ export const RegisterUserBody = zod.object({
   phoneNumber: zod.string(),
   firstName: zod.string(),
   lastName: zod.string(),
+  email: zod.string().optional(),
   smsConsent: zod.boolean(),
 });
 
