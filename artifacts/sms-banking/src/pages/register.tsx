@@ -14,17 +14,12 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
+  Phone,
+  User,
+  KeyRound,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -37,6 +32,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { PublicLayout } from "@/components/layout/PublicLayout";
+import { TextBanksLogo } from "@/components/layout/Logo";
 import { useRegisterUser, useGetTellerConfig, useTellerEnroll } from "@workspace/api-client-react";
 
 declare global {
@@ -68,6 +64,8 @@ const userSchema = z.object({
   path: ["confirmPassword"],
 });
 
+const steps = ["Your Info", "Link Bank", "All Done"];
+
 export default function RegisterPage() {
   const [, setLocation] = useLocation();
   const [step, setStep] = useState(1);
@@ -82,7 +80,6 @@ export default function RegisterPage() {
   const tellerEnrollMutation = useTellerEnroll();
   const { data: tellerConfig } = useGetTellerConfig();
 
-  // Load Teller Connect script once
   useEffect(() => {
     if (document.querySelector('script[src*="teller.io"]')) {
       setTellerScriptLoaded(true);
@@ -96,15 +93,12 @@ export default function RegisterPage() {
     document.head.appendChild(script);
   }, []);
 
-  // Set up Teller Connect when config is ready
   useEffect(() => {
     if (!tellerScriptLoaded || !tellerConfig?.applicationId || !registeredUserId) return;
-
     if (!window.TellerConnect) {
       setTellerError("Bank connection service unavailable.");
       return;
     }
-
     tellerConnectRef.current = window.TellerConnect.setup({
       applicationId: tellerConfig.applicationId,
       environment: tellerConfig.environment,
@@ -128,13 +122,11 @@ export default function RegisterPage() {
             }))
           );
           setStep(3);
-        } catch (e) {
+        } catch {
           setTellerError("Failed to save your bank connection. Please try again.");
         }
       },
-      onExit: () => {
-        // user closed connect modal — that's ok
-      },
+      onExit: () => {},
       onFailure: () => {
         setTellerError("Bank connection failed. Please try again.");
       },
@@ -156,7 +148,7 @@ export default function RegisterPage() {
   const onUserSubmit = async (values: z.infer<typeof userSchema>) => {
     try {
       const user = await registerMutation.mutateAsync({
-        data: { ...values, password: values.password } as Parameters<typeof registerMutation.mutateAsync>[0]["data"],
+        data: { ...values } as Parameters<typeof registerMutation.mutateAsync>[0]["data"],
       });
       setRegisteredUserId(user.id);
       setStep(2);
@@ -181,40 +173,60 @@ export default function RegisterPage() {
 
   return (
     <PublicLayout>
-      <div className="flex-1 flex flex-col items-center justify-center py-12 px-4 bg-slate-50/50">
+      <div className="flex-1 flex flex-col items-center justify-center py-12 px-4 bg-slate-50 min-h-screen">
+        {/* Brand mark */}
+        <div className="flex flex-col items-center mb-8">
+          <div className="flex items-center gap-2.5 mb-2">
+            <TextBanksLogo size={32} />
+            <span className="font-display font-bold text-xl text-slate-900">Text Banks</span>
+          </div>
+          <p className="text-sm text-slate-500">Create your account</p>
+        </div>
+
         {/* Step indicator */}
-        <div className="w-full max-w-xl mb-8 flex justify-center">
-          <div className="flex items-center gap-2">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center">
-                <div
-                  className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors",
-                    step > i
-                      ? "bg-primary text-primary-foreground"
-                      : step === i
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
-                  )}
-                >
-                  {step > i ? <CheckCircle className="w-4 h-4" /> : i}
-                </div>
-                {i < 3 && (
+        <div className="flex items-center gap-0 mb-8">
+          {steps.map((label, i) => {
+            const idx = i + 1;
+            const done = step > idx;
+            const active = step === idx;
+            return (
+              <div key={label} className="flex items-center">
+                <div className="flex flex-col items-center">
                   <div
-                    className={cn(
-                      "w-12 h-1 mx-2 rounded-full transition-colors",
-                      step > i ? "bg-primary" : "bg-muted"
-                    )}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                      done
+                        ? "bg-emerald-500 text-white"
+                        : active
+                        ? "bg-blue-700 text-white shadow-lg shadow-blue-700/30"
+                        : "bg-slate-200 text-slate-400"
+                    }`}
+                  >
+                    {done ? <CheckCircle className="w-4 h-4" /> : idx}
+                  </div>
+                  <span
+                    className={`text-[10px] font-semibold mt-1.5 whitespace-nowrap ${
+                      active ? "text-blue-700" : done ? "text-emerald-600" : "text-slate-400"
+                    }`}
+                  >
+                    {label}
+                  </span>
+                </div>
+                {i < steps.length - 1 && (
+                  <div
+                    className={`w-16 h-px mx-2 mb-4 transition-colors ${
+                      step > idx ? "bg-emerald-400" : "bg-slate-200"
+                    }`}
                   />
                 )}
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
 
-        <Card className="w-full max-w-xl shadow-xl shadow-black/5 border-border/60 relative overflow-hidden">
+        {/* Card */}
+        <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <AnimatePresence mode="wait">
-            {/* Step 1: Personal Info + Consent */}
+            {/* ── Step 1: Personal Info ── */}
             {step === 1 && (
               <motion.div
                 key="step1"
@@ -222,26 +234,30 @@ export default function RegisterPage() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
               >
-                <CardHeader>
-                  <CardTitle className="text-2xl font-display">Create your account</CardTitle>
-                  <CardDescription>
-                    Enter your details to register for SMS banking.
-                  </CardDescription>
-                </CardHeader>
+                <div className="px-7 pt-7 pb-5">
+                  <h2 className="text-xl font-bold text-slate-900 mb-1">Your information</h2>
+                  <p className="text-sm text-slate-500">
+                    Enter your details to create your Text Banks account.
+                  </p>
+                </div>
+
                 <Form {...userForm}>
                   <form onSubmit={userForm.handleSubmit(onUserSubmit)}>
-                    <CardContent className="space-y-6">
-                      <div className="grid grid-cols-2 gap-4">
+                    <div className="px-7 space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
                         <FormField
                           control={userForm.control}
                           name="firstName"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>First Name</FormLabel>
+                              <FormLabel className="text-slate-700 text-xs font-semibold">First Name</FormLabel>
                               <FormControl>
-                                <Input placeholder="Jane" {...field} />
+                                <div className="relative">
+                                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                  <Input placeholder="Jane" {...field} className="pl-9 h-10 border-slate-200 rounded-lg text-sm" />
+                                </div>
                               </FormControl>
-                              <FormMessage />
+                              <FormMessage className="text-xs" />
                             </FormItem>
                           )}
                         />
@@ -250,11 +266,11 @@ export default function RegisterPage() {
                           name="lastName"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Last Name</FormLabel>
+                              <FormLabel className="text-slate-700 text-xs font-semibold">Last Name</FormLabel>
                               <FormControl>
-                                <Input placeholder="Doe" {...field} />
+                                <Input placeholder="Doe" {...field} className="h-10 border-slate-200 rounded-lg text-sm" />
                               </FormControl>
-                              <FormMessage />
+                              <FormMessage className="text-xs" />
                             </FormItem>
                           )}
                         />
@@ -265,34 +281,47 @@ export default function RegisterPage() {
                         name="phoneNumber"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Mobile Number</FormLabel>
+                            <FormLabel className="text-slate-700 text-xs font-semibold">Mobile Number</FormLabel>
                             <FormControl>
-                              <Input type="tel" placeholder="(555) 123-4567" {...field} />
+                              <div className="relative">
+                                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <Input type="tel" placeholder="(555) 123-4567" {...field} className="pl-9 h-10 border-slate-200 rounded-lg text-sm" />
+                              </div>
                             </FormControl>
-                            <FormDescription>
-                              The phone number you will use to send SMS commands.
+                            <FormDescription className="text-xs text-slate-400">
+                              This is the number you'll use to text commands.
                             </FormDescription>
-                            <FormMessage />
+                            <FormMessage className="text-xs" />
                           </FormItem>
                         )}
                       />
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 gap-3">
                         <FormField
                           control={userForm.control}
                           name="password"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Password</FormLabel>
+                              <FormLabel className="text-slate-700 text-xs font-semibold">Password</FormLabel>
                               <FormControl>
                                 <div className="relative">
-                                  <Input type={showPassword ? "text" : "password"} placeholder="••••••" {...field} className="pr-10" />
-                                  <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword((v) => !v)}>
+                                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                  <Input
+                                    type={showPassword ? "text" : "password"}
+                                    placeholder="••••••"
+                                    {...field}
+                                    className="pl-9 pr-10 h-10 border-slate-200 rounded-lg text-sm"
+                                  />
+                                  <button
+                                    type="button"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                    onClick={() => setShowPassword((v) => !v)}
+                                  >
                                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                   </button>
                                 </div>
                               </FormControl>
-                              <FormMessage />
+                              <FormMessage className="text-xs" />
                             </FormItem>
                           )}
                         />
@@ -301,11 +330,16 @@ export default function RegisterPage() {
                           name="confirmPassword"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Confirm Password</FormLabel>
+                              <FormLabel className="text-slate-700 text-xs font-semibold">Confirm</FormLabel>
                               <FormControl>
-                                <Input type={showPassword ? "text" : "password"} placeholder="••••••" {...field} />
+                                <Input
+                                  type={showPassword ? "text" : "password"}
+                                  placeholder="••••••"
+                                  {...field}
+                                  className="h-10 border-slate-200 rounded-lg text-sm"
+                                />
                               </FormControl>
-                              <FormMessage />
+                              <FormMessage className="text-xs" />
                             </FormItem>
                           )}
                         />
@@ -315,62 +349,65 @@ export default function RegisterPage() {
                         control={userForm.control}
                         name="smsConsent"
                         render={({ field }) => (
-                          <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-muted/30">
-                            <FormControl>
-                              <Checkbox
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                              />
-                            </FormControl>
-                            <div className="space-y-1 leading-none">
-                              <FormLabel className="text-sm font-medium">
-                                SMS Consent Agreement
-                              </FormLabel>
-                              <FormDescription className="text-xs">
-                                By checking this box, you agree to receive SMS messages from
-                                TextBank. Msg & data rates may apply. Reply STOP to cancel. Read
-                                our{" "}
-                                <Link href="/privacy" className="underline">
-                                  Privacy Policy
-                                </Link>
-                                .
-                              </FormDescription>
+                          <FormItem>
+                            <div className="flex items-start gap-3 rounded-xl bg-slate-50 border border-slate-200 p-4">
+                              <FormControl>
+                                <Checkbox
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                  className="mt-0.5"
+                                />
+                              </FormControl>
+                              <div>
+                                <FormLabel className="text-xs font-semibold text-slate-700 block mb-0.5">
+                                  SMS Consent
+                                </FormLabel>
+                                <p className="text-xs text-slate-500 leading-relaxed">
+                                  I agree to receive SMS messages from Text Banks. Msg & data rates may apply. Reply STOP to cancel.{" "}
+                                  <Link href="/privacy" className="text-blue-600 hover:underline">
+                                    Privacy Policy
+                                  </Link>
+                                </p>
+                              </div>
                             </div>
-                            <FormMessage />
+                            <FormMessage className="text-xs" />
                           </FormItem>
                         )}
                       />
 
                       {userForm.formState.errors.root && (
-                        <p className="text-sm text-destructive">
+                        <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
                           {userForm.formState.errors.root.message}
-                        </p>
+                        </div>
                       )}
-                    </CardContent>
-                    <CardFooter className="bg-muted/20 border-t px-6 py-4">
+                    </div>
+
+                    <div className="px-7 py-5 mt-4 border-t border-slate-100">
                       <Button
                         type="submit"
-                        className="w-full group"
+                        className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-11 font-semibold group"
                         disabled={registerMutation.isPending}
                       >
                         {registerMutation.isPending ? (
-                          <>
-                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Registering...
-                          </>
+                          <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Creating account…</>
                         ) : (
-                          <>
-                            Continue to Link Bank
-                            <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                          </>
+                          <>Continue to Bank Linking <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" /></>
                         )}
                       </Button>
-                    </CardFooter>
+                      <p className="text-xs text-center text-slate-400 mt-3">
+                        Already have an account?{" "}
+                        <Link href="/my-account" className="text-blue-600 hover:underline font-medium">
+                          Sign in
+                        </Link>
+                      </p>
+                    </div>
                   </form>
                 </Form>
               </motion.div>
             )}
 
-            {/* Step 2: Teller Connect */}
+            {/* ── Step 2: Bank Linking ── */}
             {step === 2 && (
               <motion.div
                 key="step2"
@@ -378,193 +415,169 @@ export default function RegisterPage() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
               >
-                <CardHeader>
-                  <div className="flex items-center gap-2 mb-2 text-primary font-medium text-sm">
-                    <ShieldCheck className="w-4 h-4" /> Powered by Teller
-                  </div>
-                  <CardTitle className="text-2xl font-display">Link your bank</CardTitle>
-                  <CardDescription>
-                    Connect your institution securely through Teller. We only request{" "}
-                    <strong>read-only</strong> access to balances and transactions.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Security badge */}
-                  <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="px-7 pt-7 pb-5">
+                  <h2 className="text-xl font-bold text-slate-900 mb-1">Link your bank</h2>
+                  <p className="text-sm text-slate-500">
+                    Connect securely through Teller. We only request{" "}
+                    <strong className="text-slate-700">read-only</strong> access.
+                  </p>
+                </div>
+
+                <div className="px-7 space-y-4">
+                  <div className="grid grid-cols-3 gap-3">
                     {[
                       { icon: LockKeyhole, label: "Bank-grade TLS" },
                       { icon: ShieldCheck, label: "Read-only access" },
                       { icon: Building2, label: "10,000+ banks" },
                     ].map(({ icon: Icon, label }) => (
-                      <div
-                        key={label}
-                        className="flex flex-col items-center gap-2 p-3 rounded-xl bg-muted/40 border border-border/50"
-                      >
-                        <Icon className="w-5 h-5 text-primary" />
-                        <span className="text-xs text-muted-foreground font-medium">{label}</span>
+                      <div key={label} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                        <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                          <Icon className="w-4.5 h-4.5 text-blue-700" />
+                        </div>
+                        <span className="text-xs text-slate-500 font-medium leading-tight">{label}</span>
                       </div>
                     ))}
                   </div>
 
-                  <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 text-sm text-muted-foreground space-y-1">
-                    <p className="font-semibold text-foreground">What Teller accesses:</p>
-                    <ul className="list-disc pl-5 space-y-1">
-                      <li>Account names and last 4 digits</li>
-                      <li>Current balance (read-only)</li>
-                      <li>Recent transaction history (read-only)</li>
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm">
+                    <p className="font-semibold text-blue-900 mb-2 text-xs uppercase tracking-wide">What we access</p>
+                    <ul className="text-blue-800 text-xs space-y-1.5">
+                      <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-blue-500" /> Account names and last 4 digits</li>
+                      <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-blue-500" /> Current balance (read-only)</li>
+                      <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-blue-500" /> Recent transaction history</li>
                     </ul>
-                    <p className="pt-1">
-                      We <strong>never</strong> store your bank credentials or initiate any
-                      transactions.
+                    <p className="text-blue-700 text-xs mt-2 pt-2 border-t border-blue-200">
+                      We <strong>never</strong> store your credentials or initiate transactions.
                     </p>
                   </div>
 
                   {tellerConfig?.environment === "sandbox" && (
-                    <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm">
-                      <p className="font-semibold text-amber-900 mb-2">🧪 Sandbox mode — use test credentials</p>
-                      <p className="text-amber-800 mb-2">
-                        When the bank login screen appears, use these test credentials:
-                      </p>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-xs bg-amber-100 rounded-lg p-3 text-amber-900">
-                        <span className="text-amber-600">Username</span>
-                        <span className="font-bold">username</span>
-                        <span className="text-amber-600">Password</span>
-                        <span className="font-bold">password</span>
-                        <span className="text-amber-600">OTP code</span>
-                        <span className="font-bold">0000</span>
-                        <span className="text-amber-600">Security answer</span>
-                        <span className="font-bold">blue</span>
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                      <p className="font-semibold text-amber-900 text-xs uppercase tracking-wide mb-2">🧪 Sandbox — Use test credentials</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 font-mono text-xs bg-amber-100 rounded-lg p-3 text-amber-900">
+                        <span className="text-amber-600">Username</span><span className="font-bold">username</span>
+                        <span className="text-amber-600">Password</span><span className="font-bold">password</span>
+                        <span className="text-amber-600">OTP</span><span className="font-bold">0000</span>
+                        <span className="text-amber-600">Security answer</span><span className="font-bold">blue</span>
                       </div>
-                      <p className="text-amber-700 mt-2 text-xs">
-                        Select any bank from the list, then use the credentials above. MFA steps may vary by bank.
-                      </p>
                     </div>
                   )}
 
                   {tellerError && (
-                    <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+                    <div className="flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
                       <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                       {tellerError}
                     </div>
                   )}
 
                   {tellerEnrollMutation.isPending && (
-                    <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-4">
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      Syncing your accounts…
+                    <div className="flex items-center justify-center gap-2 text-sm text-slate-500 py-3">
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Syncing your accounts…
                     </div>
                   )}
-                </CardContent>
-                <CardFooter className="bg-muted/20 border-t px-6 py-4 flex gap-3">
+                </div>
+
+                <div className="px-7 py-5 mt-4 border-t border-slate-100 flex gap-3">
                   <Button
-                    type="button"
                     variant="outline"
                     onClick={() => setStep(1)}
                     disabled={tellerEnrollMutation.isPending}
+                    className="border-slate-200 text-slate-700 rounded-xl h-11"
                   >
                     Back
                   </Button>
                   <Button
-                    className="flex-1"
+                    className="flex-1 bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-11 font-semibold"
                     onClick={openTellerConnect}
                     disabled={!tellerScriptLoaded || !tellerConfig || tellerEnrollMutation.isPending}
                   >
                     {!tellerScriptLoaded ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Loading…
-                      </>
+                      <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Loading…</>
                     ) : (
-                      <>
-                        <Building2 className="w-4 h-4 mr-2" /> Connect Your Bank
-                      </>
+                      <><Building2 className="w-4 h-4 mr-2" /> Connect Your Bank</>
                     )}
                   </Button>
-                </CardFooter>
+                </div>
               </motion.div>
             )}
 
-            {/* Step 3: Success */}
+            {/* ── Step 3: Success ── */}
             {step === 3 && (
               <motion.div
                 key="step3"
-                initial={{ opacity: 0, scale: 0.95 }}
+                initial={{ opacity: 0, scale: 0.97 }}
                 animate={{ opacity: 1, scale: 1 }}
               >
-                <div className="p-12 text-center flex flex-col items-center">
-                  <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
-                    <CheckCircle className="w-10 h-10" />
+                <div className="p-10 text-center flex flex-col items-center">
+                  <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mb-6">
+                    <CheckCircle className="w-10 h-10 text-emerald-600" />
                   </div>
-                  <h2 className="text-3xl font-display font-bold mb-2">You're all set!</h2>
+                  <h2 className="text-2xl font-display font-bold text-slate-900 mb-2">You're all set!</h2>
+                  <p className="text-slate-500 text-sm mb-6">
+                    Your account is ready. Text your first command to get started.
+                  </p>
 
                   {linkedAccounts.length > 0 && (
-                    <div className="w-full bg-muted/40 rounded-xl p-4 mb-6 text-left space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                        Linked Accounts
-                      </p>
-                      {linkedAccounts.map((a) => (
-                        <div
-                          key={a.lastFour}
-                          className="flex items-center justify-between text-sm"
-                        >
-                          <span className="font-medium">
-                            {a.bankName} ••••{a.lastFour}
-                          </span>
-                          <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
-                            BAL {a.nickname}
-                          </span>
-                        </div>
-                      ))}
+                    <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 text-left">
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Linked Accounts</p>
+                      <div className="space-y-2">
+                        {linkedAccounts.map((a) => (
+                          <div key={a.lastFour} className="flex items-center justify-between text-sm">
+                            <span className="font-medium text-slate-700">
+                              {a.bankName}{" "}
+                              <span className="text-slate-400 font-normal">••••{a.lastFour}</span>
+                            </span>
+                            <code className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded font-mono">
+                              BAL {a.nickname}
+                            </code>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
 
-                  <p className="text-muted-foreground mb-8 max-w-sm text-sm">
-                    Your phone is registered and your accounts are linked. Try texting{" "}
-                    <strong className="text-foreground font-mono">BAL</strong> to our service
-                    number from your phone.
-                  </p>
-
-                  <div className="bg-muted/50 rounded-xl p-5 w-full mb-8">
-                    <h4 className="font-semibold mb-3 text-xs uppercase tracking-wider text-muted-foreground">
-                      Quick Commands
-                    </h4>
-                    <div className="grid grid-cols-2 gap-3 text-sm text-left">
-                      <div>
-                        <span className="font-mono font-bold">BAL</span>{" "}
-                        <span className="text-muted-foreground">All balances</span>
-                      </div>
-                      <div>
-                        <span className="font-mono font-bold">TRANS</span>{" "}
-                        <span className="text-muted-foreground">Recent history</span>
-                      </div>
-                      <div>
-                        <span className="font-mono font-bold">BAL [name]</span>{" "}
-                        <span className="text-muted-foreground">Specific account</span>
-                      </div>
-                      <div>
-                        <span className="font-mono font-bold">STOP</span>{" "}
-                        <span className="text-muted-foreground">Opt out instantly</span>
-                      </div>
+                  <div className="w-full bg-slate-900 rounded-xl p-5 mb-7 text-left">
+                    <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-3">Quick Commands</p>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {[
+                        ["BAL", "All balances"],
+                        ["TRANS", "Recent history"],
+                        ["BAL checking", "Specific account"],
+                        ["STOP", "Unsubscribe"],
+                      ].map(([cmd, desc]) => (
+                        <div key={cmd} className="flex items-center gap-2">
+                          <code className="text-blue-400 font-mono font-bold">{cmd}</code>
+                          <span className="text-slate-500">{desc}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-3 w-full">
-                    <Button className="w-full" onClick={() => setLocation("/my-account")}>
-                      View My Account
-                    </Button>
-                    <Button variant="outline" className="w-full" onClick={() => setLocation("/")}>
-                      Return to Homepage
-                    </Button>
+                  <div className="flex flex-col sm:flex-row gap-3 w-full">
+                    <Link href="/my-account" className="flex-1">
+                      <Button variant="outline" className="w-full border-slate-200 rounded-xl h-10 text-sm">
+                        View My Account
+                      </Button>
+                    </Link>
+                    <Link href="/" className="flex-1">
+                      <Button className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 text-sm">
+                        Back to Home
+                      </Button>
+                    </Link>
                   </div>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
-        </Card>
+        </div>
+
+        <p className="mt-6 text-xs text-slate-400 text-center max-w-xs">
+          By registering, you agree to our{" "}
+          <Link href="/terms" className="text-blue-600 hover:underline">Terms of Service</Link>
+          {" "}and{" "}
+          <Link href="/privacy" className="text-blue-600 hover:underline">Privacy Policy</Link>.
+        </p>
       </div>
     </PublicLayout>
   );
-}
-
-function cn(...classes: (string | undefined | null | false)[]) {
-  return classes.filter(Boolean).join(" ");
 }

@@ -1,26 +1,28 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { 
-  MessageSquareText, 
-  ShieldCheck, 
-  Smartphone, 
-  WifiOff, 
+import {
+  MessageSquareText,
+  ShieldCheck,
+  Smartphone,
+  WifiOff,
   Banknote,
   Send,
   CheckCircle2,
-  LockKeyhole
+  ArrowRight,
+  Building2,
+  Lock,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { useSimulateSms } from "@workspace/api-client-react";
 
 export default function LandingPage() {
   const [demoInput, setDemoInput] = useState("");
-  const [demoMessages, setDemoMessages] = useState<{text: string, isUser: boolean}[]>([
-    { text: "Text HELP to see commands.", isUser: false }
+  const [demoMessages, setDemoMessages] = useState<{ text: string; isUser: boolean }[]>([
+    { text: "Welcome to Text Banks. Reply HELP for commands.", isUser: false },
   ]);
 
   const simulateMutation = useSimulateSms();
@@ -28,215 +30,462 @@ export default function LandingPage() {
   const handleSimulate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!demoInput.trim() || simulateMutation.isPending) return;
-
     const userMsg = demoInput.trim();
-    setDemoMessages(prev => [...prev, { text: userMsg, isUser: true }]);
+    setDemoMessages((prev) => [...prev, { text: userMsg, isUser: true }]);
     setDemoInput("");
-
     try {
       const res = await simulateMutation.mutateAsync({ data: { userId: 1, command: userMsg } });
       setTimeout(() => {
-        setDemoMessages(prev => [...prev, { text: res.response, isUser: false }]);
-      }, 600); // slight delay for realism
-    } catch (err) {
+        setDemoMessages((prev) => [...prev, { text: res.response, isUser: false }]);
+      }, 600);
+    } catch {
       setTimeout(() => {
-        setDemoMessages(prev => [...prev, { text: "System error. Try again.", isUser: false }]);
+        setDemoMessages((prev) => [...prev, { text: "Error. Please try again.", isUser: false }]);
       }, 600);
     }
   };
 
   return (
     <PublicLayout>
-      {/* Hero Section */}
-      <section className="relative pt-24 pb-32 overflow-hidden border-b border-border/50">
-        <div className="absolute inset-0 z-0">
-          <img 
-            src={`${import.meta.env.BASE_URL}images/hero-bg.png`} 
-            alt="Hero abstract background" 
-            className="w-full h-full object-cover opacity-60"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-background/40 via-background/80 to-background" />
+      {/* ── Hero ── */}
+      <section className="relative bg-slate-900 overflow-hidden">
+        <div className="absolute inset-0">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-slate-900 to-slate-900" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-blue-600/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-indigo-600/10 rounded-full blur-3xl" />
         </div>
 
-        <div className="container mx-auto px-4 md:px-6 relative z-10">
-          <div className="max-w-4xl mx-auto text-center">
+        <div className="container mx-auto px-4 md:px-6 py-20 md:py-32 relative z-10">
+          <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
+              transition={{ duration: 0.55 }}
             >
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary text-secondary-foreground border border-border/50 mb-8 text-sm font-medium shadow-sm">
-                <ShieldCheck className="w-4 h-4 text-primary" />
-                100% Read-Only Access
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 mb-8">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-xs font-semibold text-blue-200 uppercase tracking-widest">
+                  Banking by SMS
+                </span>
               </div>
-              
-              <h1 className="text-5xl md:text-7xl font-display font-extrabold tracking-tight text-foreground leading-[1.1] mb-6">
-                Check your bank balance with a simple <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-600">text message.</span>
+
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-extrabold text-white leading-[1.08] tracking-tight mb-6">
+                Check your balance with a{" "}
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400">
+                  text message.
+                </span>
               </h1>
-              
-              <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
-                No app required. No internet needed. Connect your bank securely and text commands like BAL or TRANS to get instant updates on your feature phone.
+
+              <p className="text-lg text-slate-400 mb-10 leading-relaxed max-w-lg">
+                No smartphone. No data plan. No app. Link your bank account once and text{" "}
+                <span className="font-mono text-slate-200 bg-slate-800 px-1.5 py-0.5 rounded text-sm">BAL</span>{" "}
+                or{" "}
+                <span className="font-mono text-slate-200 bg-slate-800 px-1.5 py-0.5 rounded text-sm">TRANS</span>{" "}
+                from any phone.
               </p>
-              
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+
+              <div className="flex flex-col sm:flex-row gap-3">
                 <Link href="/register">
-                  <Button size="lg" className="rounded-full px-8 text-base h-14 hover-elevate shadow-lg shadow-primary/20">
-                    Register Your Number
+                  <Button
+                    size="lg"
+                    className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-8 h-12 text-base font-semibold shadow-lg shadow-blue-900/40 group"
+                  >
+                    Get Started Free
+                    <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
                   </Button>
                 </Link>
+                <Link href="/my-account">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white rounded-xl px-8 h-12 text-base"
+                  >
+                    Sign In
+                  </Button>
+                </Link>
+              </div>
+
+              <div className="mt-10 flex flex-wrap gap-6">
+                {[
+                  { icon: ShieldCheck, text: "Read-only access" },
+                  { icon: Lock, text: "Bank-grade security" },
+                  { icon: Zap, text: "Instant replies" },
+                ].map(({ icon: Icon, text }) => (
+                  <div key={text} className="flex items-center gap-2 text-sm text-slate-400">
+                    <Icon className="w-4 h-4 text-emerald-400" />
+                    {text}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* Phone mockup */}
+            <motion.div
+              initial={{ opacity: 0, y: 32 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.55, delay: 0.15 }}
+              className="flex justify-center lg:justify-end"
+            >
+              <div className="relative">
+                <div className="absolute inset-0 bg-blue-600/20 rounded-[3rem] blur-2xl scale-90 translate-y-4" />
+                <div className="relative w-[300px] bg-slate-800 rounded-[2.5rem] p-3.5 shadow-2xl border border-slate-700/60">
+                  <div className="bg-slate-900 rounded-[2rem] overflow-hidden">
+                    {/* Status bar */}
+                    <div className="bg-slate-900 px-6 pt-4 pb-2 flex justify-between items-center">
+                      <span className="text-xs text-slate-400 font-medium">9:41 AM</span>
+                      <div className="flex gap-1">
+                        <div className="w-1 h-1 rounded-full bg-emerald-400" />
+                        <div className="w-1 h-1 rounded-full bg-emerald-400" />
+                        <div className="w-1 h-1 rounded-full bg-emerald-400" />
+                      </div>
+                    </div>
+                    {/* Chat header */}
+                    <div className="bg-slate-800 border-b border-slate-700 px-4 py-3 text-center">
+                      <p className="text-white font-semibold text-sm">Text Banks</p>
+                      <p className="text-xs text-slate-400">(845) 689-0940</p>
+                    </div>
+                    {/* Messages */}
+                    <div className="bg-slate-900 min-h-[280px] p-4 flex flex-col gap-3">
+                      {demoMessages.map((msg, i) => (
+                        <div
+                          key={i}
+                          className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
+                            msg.isUser
+                              ? "bg-blue-600 text-white self-end rounded-br-sm"
+                              : "bg-slate-700 text-slate-100 self-start rounded-bl-sm"
+                          }`}
+                        >
+                          {msg.text}
+                        </div>
+                      ))}
+                      {simulateMutation.isPending && (
+                        <div className="bg-slate-700 self-start rounded-2xl rounded-bl-sm px-3.5 py-2.5 flex gap-1">
+                          <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:0.1s]" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:0.2s]" />
+                        </div>
+                      )}
+                    </div>
+                    {/* Input */}
+                    <form
+                      onSubmit={handleSimulate}
+                      className="bg-slate-800 border-t border-slate-700 p-3 flex gap-2 items-center"
+                    >
+                      <input
+                        className="flex-1 bg-slate-700 border-0 rounded-full px-4 py-2 text-xs text-white placeholder:text-slate-500 outline-none"
+                        placeholder="Try BAL or TRANS…"
+                        value={demoInput}
+                        onChange={(e) => setDemoInput(e.target.value)}
+                        disabled={simulateMutation.isPending}
+                      />
+                      <button
+                        type="submit"
+                        disabled={!demoInput.trim() || simulateMutation.isPending}
+                        className="w-8 h-8 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 rounded-full flex items-center justify-center shrink-0 transition-colors"
+                      >
+                        <Send className="w-3.5 h-3.5 text-white" />
+                      </button>
+                    </form>
+                  </div>
+                </div>
               </div>
             </motion.div>
           </div>
         </div>
-      </section>
 
-      {/* How it Works & Interactive Demo */}
-      <section className="py-24 bg-card relative">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
-            <div>
-              <h2 className="text-3xl font-display font-bold mb-6">How it works</h2>
-              <p className="text-muted-foreground mb-12 text-lg">
-                We bridge the gap between modern banking and basic mobile phones, prioritizing security above all else.
-              </p>
-
-              <div className="space-y-8">
-                {[
-                  { icon: Smartphone, title: "1. Register your phone", desc: "Sign up on our secure portal and verify your mobile number." },
-                  { icon: LockKeyhole, title: "2. Link your bank safely", desc: "Connect via a secure portal. We never store your credentials and access is read-only." },
-                  { icon: MessageSquareText, title: "3. Text commands", desc: "Send BAL for balances, TRANS for recent transactions, or STOP to instantly disconnect." }
-                ].map((step, i) => (
-                  <motion.div 
-                    key={i}
-                    initial={{ opacity: 0, x: -20 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: i * 0.1 }}
-                    className="flex gap-4"
-                  >
-                    <div className="shrink-0 w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                      <step.icon className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-semibold mb-1">{step.title}</h3>
-                      <p className="text-muted-foreground">{step.desc}</p>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-
-            {/* Interactive Phone Demo */}
-            <div className="flex justify-center">
-              <div className="w-[320px] h-[640px] bg-slate-900 rounded-[3rem] p-4 shadow-2xl relative border-8 border-slate-800 flex flex-col">
-                <div className="absolute top-0 inset-x-0 h-6 flex justify-center">
-                  <div className="w-32 h-4 bg-slate-800 rounded-b-2xl"></div>
-                </div>
-                
-                <div className="flex-1 bg-slate-50 rounded-[2rem] overflow-hidden flex flex-col relative mt-2">
-                  <div className="bg-slate-200/80 backdrop-blur p-4 pb-2 text-center border-b border-slate-300">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">TextBank</p>
-                  </div>
-                  
-                  <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3">
-                    {demoMessages.map((msg, i) => (
-                      <div key={i} className={`max-w-[85%] rounded-2xl p-3 text-sm ${msg.isUser ? 'bg-blue-600 text-white self-end rounded-br-sm' : 'bg-slate-200 text-slate-800 self-start rounded-bl-sm'}`}>
-                        {msg.text}
-                      </div>
-                    ))}
-                    {simulateMutation.isPending && (
-                      <div className="bg-slate-200 text-slate-500 self-start rounded-2xl rounded-bl-sm p-3 text-sm flex gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" />
-                        <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce delay-100" />
-                        <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce delay-200" />
-                      </div>
-                    )}
-                  </div>
-
-                  <form onSubmit={handleSimulate} className="p-3 bg-white border-t border-slate-200 flex gap-2">
-                    <Input 
-                      className="rounded-full bg-slate-100 border-transparent h-10 text-sm focus-visible:ring-blue-500" 
-                      placeholder="Try 'BAL' or 'TRANS'"
-                      value={demoInput}
-                      onChange={e => setDemoInput(e.target.value)}
-                      disabled={simulateMutation.isPending}
-                    />
-                    <Button size="icon" className="rounded-full w-10 h-10 shrink-0 bg-blue-600 hover:bg-blue-700 disabled:opacity-50" disabled={!demoInput.trim() || simulateMutation.isPending}>
-                      <Send className="w-4 h-4" />
-                    </Button>
-                  </form>
-                </div>
-              </div>
-            </div>
-          </div>
+        {/* Wave bottom */}
+        <div className="absolute bottom-0 left-0 right-0">
+          <svg viewBox="0 0 1440 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
+            <path d="M0 60L1440 60L1440 20C1200 60 960 0 720 20C480 40 240 0 0 20L0 60Z" fill="#f8fafc" />
+          </svg>
         </div>
       </section>
 
-      {/* Features Grid */}
-      <section className="py-24 bg-background">
+      {/* ── Trust bar ── */}
+      <section className="bg-slate-50 py-10 border-b border-slate-200">
         <div className="container mx-auto px-4 md:px-6">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-3xl font-display font-bold mb-4">Built for accessibility</h2>
-            <p className="text-muted-foreground text-lg">
-              Not everyone has a smartphone or reliable data. TextBank is designed for the millions who rely on basic mobile services.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-8 md:gap-16">
             {[
-              { icon: WifiOff, title: "No Data Required", desc: "Works entirely over standard cellular SMS. No 4G/5G or WiFi needed." },
-              { icon: ShieldCheck, title: "Strictly Read-Only", desc: "Architected so money can never be moved. If your phone is lost, your funds remain secure." },
-              { icon: Banknote, title: "Multiple Accounts", desc: "Link checking, savings, and credit cards. Use nicknames like 'BAL checking' to query specific accounts." }
-            ].map((feature, i) => (
-              <Card key={i} className="p-8 border-border/50 hover:border-primary/20 transition-colors shadow-sm bg-card hover-elevate">
-                <div className="w-12 h-12 bg-secondary rounded-xl flex items-center justify-center mb-6 text-foreground">
-                  <feature.icon className="w-6 h-6" />
-                </div>
-                <h3 className="text-xl font-semibold mb-3">{feature.title}</h3>
-                <p className="text-muted-foreground leading-relaxed">{feature.desc}</p>
-              </Card>
+              { value: "10,000+", label: "Supported banks" },
+              { value: "100%", label: "Read-only access" },
+              { value: "< 3 sec", label: "Average reply time" },
+              { value: "Bank-grade", label: "TLS encryption" },
+            ].map((stat) => (
+              <div key={stat.label} className="text-center">
+                <p className="text-2xl font-display font-bold text-slate-900">{stat.value}</p>
+                <p className="text-sm text-slate-500 mt-0.5">{stat.label}</p>
+              </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Pricing Mock */}
-      <section className="py-24 bg-slate-50 border-t border-border/50">
+      {/* ── How it works ── */}
+      <section className="py-24 bg-white">
         <div className="container mx-auto px-4 md:px-6">
           <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-3xl font-display font-bold mb-4">Simple Pricing</h2>
-            <p className="text-muted-foreground">Transparent plans for individuals and families.</p>
+            <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
+              How It Works
+            </div>
+            <h2 className="text-3xl md:text-4xl font-display font-bold text-slate-900 mb-4">
+              Up and running in minutes
+            </h2>
+            <p className="text-slate-500 text-lg">
+              Three simple steps to access your finances from any mobile phone.
+            </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            <Card className="p-8 border-border/50 shadow-sm bg-card">
-              <h3 className="text-2xl font-bold mb-2">Basic</h3>
-              <div className="text-4xl font-display font-extrabold mb-6">$0<span className="text-lg text-muted-foreground font-normal">/mo</span></div>
-              <ul className="space-y-4 mb-8">
-                <li className="flex items-center gap-3 text-muted-foreground"><CheckCircle2 className="w-5 h-5 text-primary" /> Up to 2 linked accounts</li>
-                <li className="flex items-center gap-3 text-muted-foreground"><CheckCircle2 className="w-5 h-5 text-primary" /> 50 SMS queries per month</li>
-                <li className="flex items-center gap-3 text-muted-foreground"><CheckCircle2 className="w-5 h-5 text-primary" /> Standard support</li>
-              </ul>
-              <Button variant="outline" className="w-full" asChild>
-                <Link href="/register">Start Free</Link>
-              </Button>
-            </Card>
-
-            <Card className="p-8 border-primary shadow-xl bg-card relative overflow-hidden">
-              <div className="absolute top-0 inset-x-0 h-1.5 bg-primary" />
-              <div className="absolute top-4 right-4 bg-primary/10 text-primary text-xs font-bold px-3 py-1 rounded-full">RECOMMENDED</div>
-              <h3 className="text-2xl font-bold mb-2">Premium</h3>
-              <div className="text-4xl font-display font-extrabold mb-6">$4<span className="text-lg text-muted-foreground font-normal">/mo</span></div>
-              <ul className="space-y-4 mb-8">
-                <li className="flex items-center gap-3 text-muted-foreground"><CheckCircle2 className="w-5 h-5 text-primary" /> Unlimited linked accounts</li>
-                <li className="flex items-center gap-3 text-muted-foreground"><CheckCircle2 className="w-5 h-5 text-primary" /> Unlimited SMS queries</li>
-                <li className="flex items-center gap-3 text-muted-foreground"><CheckCircle2 className="w-5 h-5 text-primary" /> Priority alerts & custom nicknames</li>
-              </ul>
-              <Button className="w-full" asChild>
-                <Link href="/register">Get Premium</Link>
-              </Button>
-            </Card>
+          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+            {[
+              {
+                step: "01",
+                icon: Smartphone,
+                title: "Register your number",
+                desc: "Sign up on our secure web portal with your name and the phone number you'll use to send texts.",
+                color: "bg-blue-50 text-blue-700",
+              },
+              {
+                step: "02",
+                icon: Building2,
+                title: "Link your bank",
+                desc: "Connect securely via Teller. We request read-only access only — your credentials are never stored.",
+                color: "bg-indigo-50 text-indigo-700",
+              },
+              {
+                step: "03",
+                icon: MessageSquareText,
+                title: "Start texting",
+                desc: "Text BAL for balances, TRANS for recent transactions, or STOP to instantly disconnect at any time.",
+                color: "bg-emerald-50 text-emerald-700",
+              },
+            ].map((step, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                className="relative"
+              >
+                {i < 2 && (
+                  <div className="hidden md:block absolute top-9 left-full w-full h-px border-t-2 border-dashed border-slate-200 z-0 -translate-x-4" />
+                )}
+                <div className="relative bg-white border border-slate-200 rounded-2xl p-7 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="text-xs font-bold text-slate-400 mb-4">{step.step}</div>
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-5 ${step.color}`}>
+                    <step.icon className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-900 mb-2">{step.title}</h3>
+                  <p className="text-slate-500 text-sm leading-relaxed">{step.desc}</p>
+                </div>
+              </motion.div>
+            ))}
           </div>
+        </div>
+      </section>
+
+      {/* ── Features ── */}
+      <section className="py-24 bg-slate-50 border-y border-slate-200">
+        <div className="container mx-auto px-4 md:px-6">
+          <div className="text-center max-w-2xl mx-auto mb-16">
+            <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
+              Why Text Banks
+            </div>
+            <h2 className="text-3xl md:text-4xl font-display font-bold text-slate-900 mb-4">
+              Built for everyone, secured for all
+            </h2>
+            <p className="text-slate-500 text-lg">
+              Financial access shouldn't require a smartphone or a data plan.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6">
+            {[
+              {
+                icon: WifiOff,
+                title: "No Internet Required",
+                desc: "Works over standard SMS on any mobile phone — from basic feature phones to the latest smartphones. No WiFi or data plan needed.",
+                accent: "text-orange-600 bg-orange-50",
+              },
+              {
+                icon: ShieldCheck,
+                title: "Strictly Read-Only",
+                desc: "Architecturally impossible to move money. Even if your phone is lost or stolen, your funds are completely safe. No transactions, ever.",
+                accent: "text-emerald-600 bg-emerald-50",
+              },
+              {
+                icon: Banknote,
+                title: "All Your Accounts",
+                desc: "Link checking, savings, and credit cards across multiple banks. Use BAL checking or BAL savings to query specific accounts by nickname.",
+                accent: "text-blue-600 bg-blue-50",
+              },
+            ].map((feature, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.08 }}
+                className="bg-white border border-slate-200 rounded-2xl p-7 shadow-sm hover:shadow-md transition-shadow"
+              >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-6 ${feature.accent}`}>
+                  <feature.icon className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 mb-3">{feature.title}</h3>
+                <p className="text-slate-500 leading-relaxed text-sm">{feature.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── SMS Command Reference ── */}
+      <section className="py-24 bg-white">
+        <div className="container mx-auto px-4 md:px-6">
+          <div className="max-w-3xl mx-auto">
+            <div className="text-center mb-12">
+              <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
+                SMS Commands
+              </div>
+              <h2 className="text-3xl md:text-4xl font-display font-bold text-slate-900">
+                Simple commands. Instant answers.
+              </h2>
+            </div>
+
+            <div className="bg-slate-900 rounded-2xl overflow-hidden shadow-xl">
+              <div className="border-b border-slate-800 px-6 py-3 flex items-center gap-2">
+                <div className="flex gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-slate-700" />
+                  <div className="w-3 h-3 rounded-full bg-slate-700" />
+                  <div className="w-3 h-3 rounded-full bg-slate-700" />
+                </div>
+                <span className="text-xs text-slate-500 ml-2">SMS Commands</span>
+              </div>
+              <div className="p-6 space-y-4">
+                {[
+                  { cmd: "BAL", desc: "Get all account balances", resp: "Chase Checking ••••4521: $2,341.50\nAmEx Credit ••••9911: $891.20" },
+                  { cmd: "BAL checking", desc: "Get balance of a specific account", resp: "Chase Checking ••••4521: $2,341.50" },
+                  { cmd: "TRANS", desc: "View last 5 transactions", resp: "Mar 14 Starbucks: -$5.40\nMar 13 Payroll: +$2,100.00\n..." },
+                  { cmd: "HELP", desc: "Show all commands", resp: "Text Banks Commands: BAL, TRANS, STOP..." },
+                  { cmd: "STOP", desc: "Immediately unsubscribe", resp: "You have been unsubscribed." },
+                ].map(({ cmd, desc, resp }) => (
+                  <div key={cmd} className="grid md:grid-cols-3 gap-3 md:items-start border-b border-slate-800 pb-4 last:border-0 last:pb-0">
+                    <div>
+                      <code className="text-blue-400 font-mono font-bold text-sm">{cmd}</code>
+                      <p className="text-slate-500 text-xs mt-1">{desc}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <div className="bg-slate-800 rounded-lg px-3 py-2">
+                        <p className="text-emerald-400 font-mono text-xs whitespace-pre-line leading-relaxed">{resp}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Pricing ── */}
+      <section className="py-24 bg-slate-50 border-t border-slate-200">
+        <div className="container mx-auto px-4 md:px-6">
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
+              Pricing
+            </div>
+            <h2 className="text-3xl md:text-4xl font-display font-bold text-slate-900 mb-4">
+              Transparent, simple pricing
+            </h2>
+            <p className="text-slate-500 text-lg">
+              Start free. Upgrade when you need more.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+              <div className="mb-6">
+                <h3 className="text-xl font-bold text-slate-900 mb-1">Basic</h3>
+                <p className="text-slate-500 text-sm">For individuals getting started</p>
+              </div>
+              <div className="mb-8">
+                <span className="text-5xl font-display font-extrabold text-slate-900">$0</span>
+                <span className="text-slate-500 text-base ml-1">/month</span>
+              </div>
+              <ul className="space-y-3 mb-8">
+                {[
+                  "Up to 2 linked accounts",
+                  "50 SMS queries per month",
+                  "Standard support",
+                ].map((item) => (
+                  <li key={item} className="flex items-center gap-3 text-sm text-slate-600">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/register">
+                <Button variant="outline" className="w-full border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl h-11">
+                  Start Free
+                </Button>
+              </Link>
+            </div>
+
+            <div className="bg-blue-700 rounded-2xl p-8 shadow-xl relative overflow-hidden">
+              <div className="absolute top-4 right-4 bg-white/15 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+                RECOMMENDED
+              </div>
+              <div className="mb-6">
+                <h3 className="text-xl font-bold text-white mb-1">Premium</h3>
+                <p className="text-blue-200 text-sm">For power users and families</p>
+              </div>
+              <div className="mb-8">
+                <span className="text-5xl font-display font-extrabold text-white">$4</span>
+                <span className="text-blue-200 text-base ml-1">/month</span>
+              </div>
+              <ul className="space-y-3 mb-8">
+                {[
+                  "Unlimited linked accounts",
+                  "Unlimited SMS queries",
+                  "Priority support & alerts",
+                  "Custom account nicknames",
+                ].map((item) => (
+                  <li key={item} className="flex items-center gap-3 text-sm text-blue-100">
+                    <CheckCircle2 className="w-4 h-4 text-blue-300 shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/register">
+                <Button className="w-full bg-white text-blue-700 hover:bg-blue-50 rounded-xl h-11 font-semibold shadow-sm">
+                  Get Premium
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Final CTA ── */}
+      <section className="py-20 bg-slate-900 text-white relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-slate-900 to-slate-900" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-blue-600/10 rounded-full blur-3xl" />
+        <div className="container mx-auto px-4 md:px-6 text-center relative z-10">
+          <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
+            Ready to get started?
+          </h2>
+          <p className="text-slate-400 text-lg mb-8 max-w-xl mx-auto">
+            Register in under two minutes and start checking your balance by text today.
+          </p>
+          <Link href="/register">
+            <Button
+              size="lg"
+              className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-10 h-13 text-base font-semibold shadow-lg shadow-blue-900/40 group"
+            >
+              Create Your Account
+              <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+            </Button>
+          </Link>
         </div>
       </section>
     </PublicLayout>
