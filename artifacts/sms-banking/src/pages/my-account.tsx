@@ -31,7 +31,8 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { TextBanksLogo } from "@/components/layout/Logo";
-import { useGetUserTransactions, useGetSmsLogs, useGetUser, useTellerEnroll, useGetTellerConfig } from "@workspace/api-client-react";
+import { useGetUserTransactions, useGetSmsLogs, useGetUser, useTellerEnroll, useGetTellerConfig, getGetUserQueryKey } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 declare global {
   interface Window {
@@ -200,6 +201,7 @@ export default function MyAccountPage() {
   };
 
   // ── Teller Connect (inline bank linking) ──
+  const queryClient = useQueryClient();
   const [tellerScriptLoaded, setTellerScriptLoaded] = useState(false);
   const [bankLinkError, setBankLinkError] = useState<string | null>(null);
   const [bankLinkSuccess, setBankLinkSuccess] = useState<string | null>(null);
@@ -237,6 +239,8 @@ export default function MyAccountPage() {
             },
           });
           const count = (result as { accountsLinked?: number }).accountsLinked ?? 0;
+          // Invalidate cache so the accounts list refreshes immediately
+          await queryClient.invalidateQueries({ queryKey: getGetUserQueryKey(session!.id) });
           setBankLinkSuccess(`${enrollment.enrollment.institution.name} connected — ${count} account${count !== 1 ? "s" : ""} linked!`);
           setTimeout(() => setBankLinkSuccess(null), 6000);
         } catch {
@@ -262,6 +266,7 @@ export default function MyAccountPage() {
       const data = await res.json() as { accountsLinked?: number; errors?: string[] };
       if (!res.ok) { setBankLinkError("Sync failed. Please reconnect your bank."); return; }
       const count = data.accountsLinked ?? 0;
+      await queryClient.invalidateQueries({ queryKey: getGetUserQueryKey(session.id) });
       setBankLinkSuccess(`Sync complete — ${count} account${count !== 1 ? "s" : ""} updated.`);
       setTimeout(() => setBankLinkSuccess(null), 4000);
     } catch {

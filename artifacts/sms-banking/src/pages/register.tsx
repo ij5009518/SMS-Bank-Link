@@ -74,6 +74,9 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [registeredUserId, setRegisteredUserId] = useState<number | null>(null);
   const [registeredPhone, setRegisteredPhone] = useState("");
+  const [registeredUserData, setRegisteredUserData] = useState<{
+    id: number; firstName: string; lastName: string; phoneNumber: string; onboardingStatus: string; optedOut: boolean;
+  } | null>(null);
 
   // Verification
   const [verifyCode, setVerifyCode] = useState(["", "", "", "", "", ""]);
@@ -133,6 +136,7 @@ export default function RegisterPage() {
           setLinkedAccounts(result.accounts.map((a) => ({
             nickname: a.nickname, lastFour: a.accountLastFour, bankName: a.bankName,
           })));
+          saveSession(registeredUserData ? { ...registeredUserData, onboardingStatus: "active" } : null);
           setStage("done");
         } catch {
           setTellerError("Failed to save your bank connection. Please try again.");
@@ -142,6 +146,11 @@ export default function RegisterPage() {
       onFailure: () => setTellerError("Bank connection failed. Please try again."),
     });
   }, [tellerScriptLoaded, tellerConfig, registeredUserId]);
+
+  const saveSession = (data: typeof registeredUserData) => {
+    if (!data) return;
+    try { localStorage.setItem("textbank_session", JSON.stringify(data)); } catch { /* best-effort */ }
+  };
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -155,6 +164,14 @@ export default function RegisterPage() {
       });
       setRegisteredUserId(user.id);
       setRegisteredPhone(values.phoneNumber);
+      setRegisteredUserData({
+        id: user.id,
+        firstName: (user as { firstName?: string }).firstName ?? values.firstName,
+        lastName: (user as { lastName?: string }).lastName ?? values.lastName,
+        phoneNumber: values.phoneNumber,
+        onboardingStatus: (user as { onboardingStatus?: string }).onboardingStatus ?? "pending",
+        optedOut: false,
+      });
       setStage("verify");
       // Focus first code box
       setTimeout(() => codeInputRefs.current[0]?.focus(), 100);
@@ -582,7 +599,7 @@ export default function RegisterPage() {
                       : <><Building2 className="w-4 h-4 mr-2" /> Connect Your Bank</>
                     }
                   </Button>
-                  <button onClick={() => setStage("done")}
+                  <button onClick={() => { saveSession(registeredUserData); setStage("done"); }}
                     className="w-full flex items-center justify-center gap-2 text-sm text-slate-500 hover:text-slate-700 transition-colors py-2">
                     <SkipForward className="w-4 h-4" />
                     Skip for now — I'll do this later
