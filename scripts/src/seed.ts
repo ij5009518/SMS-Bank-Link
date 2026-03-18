@@ -5,6 +5,7 @@ import {
   transactionsTable,
   smsLogsTable,
   alertSettingsTable,
+  tellerEnrollmentsTable,
 } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 
@@ -14,6 +15,7 @@ async function seed() {
   // Clear existing data
   await db.delete(smsLogsTable);
   await db.delete(transactionsTable);
+  await db.delete(tellerEnrollmentsTable);
   await db.delete(accountsTable);
   await db.delete(usersTable);
   await db.delete(alertSettingsTable);
@@ -91,6 +93,16 @@ async function seed() {
       onboardingStatus: "active",
       createdAt: new Date("2026-03-01"),
     },
+    {
+      phoneNumber: "+1 (929) 314-5096",
+      firstName: "Samuel",
+      lastName: "Hauer",
+      smsConsent: true,
+      consentDate: new Date("2026-03-10"),
+      optedOut: false,
+      onboardingStatus: "active",
+      createdAt: new Date("2026-03-10"),
+    },
   ]).returning();
 
   console.log(`Inserted ${users.length} users`);
@@ -108,6 +120,8 @@ async function seed() {
     // Carlos Rivera (users[5])
     { userId: users[5].id, bankName: "US Bank", accountType: "checking", accountLastFour: "6643", nickname: "checking", currentBalance: "3210.00" },
     { userId: users[5].id, bankName: "US Bank", accountType: "credit", accountLastFour: "1198", nickname: "credit", currentBalance: "-450.30" },
+    // Samuel Hauer (users[6])
+    { userId: users[6].id, bankName: "TD Bank", accountType: "checking", accountLastFour: "2847", nickname: "checking", currentBalance: "4156.75" },
   ];
 
   const accounts = await db.insert(accountsTable).values(accountData).returning();
@@ -122,6 +136,7 @@ async function seed() {
   const jamesMain = accounts.find((a) => a.userId === users[1].id && a.nickname === "main")!;
   const lindaEveryday = accounts.find((a) => a.userId === users[2].id && a.nickname === "everyday")!;
   const carlosChecking = accounts.find((a) => a.userId === users[5].id && a.nickname === "checking")!;
+  const samuelChecking = accounts.find((a) => a.userId === users[6].id && a.nickname === "checking")!;
 
   const addDays = (d: Date, days: number) => {
     const result = new Date(d);
@@ -162,7 +177,16 @@ async function seed() {
     { accountId: carlosChecking.id, userId: users[5].id, description: "RENT PAYMENT", amount: "1450.00", type: "debit", category: "Housing", merchantName: "Sunrise Apartments", transactionDate: addDays(now, -5), runningBalance: "1503.67" },
   ];
 
-  const allTxns = [...mariaTxns, ...jamesTxns, ...lindaTxns, ...carlosTxns];
+  // Samuel's transactions
+  const samuelTxns = [
+    { accountId: samuelChecking.id, userId: users[6].id, description: "DIRECT DEPOSIT - SALARY", amount: "2350.00", type: "credit", category: "Income", merchantName: "Tech Solutions LLC", transactionDate: addDays(now, -2), runningBalance: "4156.75" },
+    { accountId: samuelChecking.id, userId: users[6].id, description: "TRADER JOE'S", amount: "58.92", type: "debit", category: "Groceries", merchantName: "Trader Joe's", transactionDate: addDays(now, -3), runningBalance: "1806.75" },
+    { accountId: samuelChecking.id, userId: users[6].id, description: "SUBWAY CARD RELOAD", amount: "33.00", type: "debit", category: "Transport", merchantName: "MTA", transactionDate: addDays(now, -5), runningBalance: "1865.67" },
+    { accountId: samuelChecking.id, userId: users[6].id, description: "HULU SUBSCRIPTION", amount: "17.99", type: "debit", category: "Entertainment", merchantName: "Hulu", transactionDate: addDays(now, -7), runningBalance: "1898.67" },
+    { accountId: samuelChecking.id, userId: users[6].id, description: "INTERNET BILL", amount: "59.99", type: "debit", category: "Utilities", merchantName: "Spectrum", transactionDate: addDays(now, -9), runningBalance: "1916.66" },
+  ];
+
+  const allTxns = [...mariaTxns, ...jamesTxns, ...lindaTxns, ...carlosTxns, ...samuelTxns];
   await db.insert(transactionsTable).values(allTxns);
   console.log(`Inserted ${allTxns.length} transactions`);
 
