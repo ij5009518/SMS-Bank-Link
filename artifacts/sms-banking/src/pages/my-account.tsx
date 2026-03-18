@@ -113,6 +113,15 @@ export default function MyAccountPage() {
   const [smsOptedIn, setSmsOptedIn] = useState(true);
   const [selectedPlan, setSelectedPlan] = useState<"basic" | "premium">("basic");
 
+  // Phone management state
+  type PhoneSection = "view" | "reverify-otp" | "change-request" | "change-otp";
+  const [phoneSection, setPhoneSection] = useState<PhoneSection>("view");
+  const [phoneOtp, setPhoneOtp] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [phoneLoading, setPhoneLoading] = useState(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [phoneSuccess, setPhoneSuccess] = useState<string | null>(null);
+
   useEffect(() => {
     const s = getSession();
     setSession(s);
@@ -198,6 +207,77 @@ export default function MyAccountPage() {
       setTimeout(() => setSettingsSaved(false), 3000);
     } catch { setSettingsError("Network error. Please try again."); }
     finally { setSettingsSaving(false); }
+  };
+
+  // ── Phone Management ──
+  const handleReverifyPhone = async () => {
+    if (!session) return;
+    setPhoneLoading(true); setPhoneError(null); setPhoneSuccess(null); setPhoneOtp("");
+    try {
+      const res = await fetch("/api/auth/reverify-phone", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: session.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPhoneError(data.message || "Failed to send code."); return; }
+      setPhoneSection("reverify-otp");
+    } catch { setPhoneError("Network error. Please try again."); }
+    finally { setPhoneLoading(false); }
+  };
+
+  const handleConfirmReverify = async () => {
+    if (!session) return;
+    setPhoneLoading(true); setPhoneError(null);
+    try {
+      const res = await fetch("/api/auth/verify-phone", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: session.id, code: phoneOtp }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPhoneError(data.message || "Invalid code."); return; }
+      if (data.user) {
+        const updated: SessionUser = { ...session, onboardingStatus: data.user.onboardingStatus };
+        saveSession(updated); setSession(updated);
+      }
+      setPhoneSuccess("Phone number verified successfully.");
+      setPhoneSection("view"); setPhoneOtp("");
+    } catch { setPhoneError("Network error. Please try again."); }
+    finally { setPhoneLoading(false); }
+  };
+
+  const handleRequestPhoneChange = async () => {
+    if (!session) return;
+    setPhoneLoading(true); setPhoneError(null); setPhoneSuccess(null);
+    try {
+      const res = await fetch("/api/auth/request-phone-change", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: session.id, newPhoneNumber: newPhone }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPhoneError(data.message || "Failed to send code."); return; }
+      setPhoneSection("change-otp"); setPhoneOtp("");
+    } catch { setPhoneError("Network error. Please try again."); }
+    finally { setPhoneLoading(false); }
+  };
+
+  const handleConfirmPhoneChange = async () => {
+    if (!session) return;
+    setPhoneLoading(true); setPhoneError(null);
+    try {
+      const res = await fetch("/api/auth/confirm-phone-change", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: session.id, code: phoneOtp }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPhoneError(data.message || "Invalid code."); return; }
+      if (data.user) {
+        const updated: SessionUser = { ...session, phoneNumber: data.user.phoneNumber };
+        saveSession(updated); setSession(updated);
+      }
+      setPhoneSuccess("Phone number updated successfully.");
+      setPhoneSection("view"); setPhoneOtp(""); setNewPhone("");
+    } catch { setPhoneError("Network error. Please try again."); }
+    finally { setPhoneLoading(false); }
   };
 
   // ── Teller Connect (inline bank linking) ──
@@ -783,13 +863,165 @@ export default function MyAccountPage() {
                               <Input value={editLastName} onChange={(e) => setEditLastName(e.target.value)} className="h-10 border-slate-200 rounded-xl text-sm" />
                             </div>
                           </div>
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-700">Mobile Number</label>
-                            <div className="relative">
-                              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                              <Input value={session.phoneNumber} disabled className="pl-9 h-10 border-slate-200 rounded-xl text-sm bg-slate-50 text-slate-500 cursor-not-allowed" />
+                          {/* Phone Number Management */}
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-semibold text-slate-700">Mobile Number</label>
+                              {phoneSection === "view" && (
+                                <div className="flex items-center gap-1.5">
+                                  {(freshUser as { phoneVerified?: boolean } | undefined)?.phoneVerified
+                                    ? <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"><CheckCircle2 className="w-3 h-3" /> Verified</span>
+                                    : <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5"><AlertCircle className="w-3 h-3" /> Unverified</span>
+                                  }
+                                </div>
+                              )}
                             </div>
-                            <p className="text-xs text-slate-400">Your SMS number cannot be changed. Contact support if needed.</p>
+
+                            {/* Current number display */}
+                            <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                              <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                              <span className="text-sm font-mono font-semibold text-slate-800 flex-1">
+                                {session.phoneNumber.replace(/(\d{1})(\d{3})(\d{3})(\d{4})/, "+$1 ($2) $3-$4")}
+                              </span>
+                              {phoneSection === "view" && (
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => { setPhoneSection("change-request"); setPhoneError(null); setPhoneSuccess(null); setNewPhone(""); }}
+                                    className="text-[11px] font-semibold text-blue-700 hover:text-blue-900 underline underline-offset-2 transition-colors"
+                                  >
+                                    Change
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Phone error/success messages */}
+                            {phoneError && (
+                              <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                                <AlertCircle className="w-3.5 h-3.5 shrink-0" />{phoneError}
+                              </div>
+                            )}
+                            {phoneSuccess && (
+                              <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />{phoneSuccess}
+                              </div>
+                            )}
+
+                            {/* Re-verify OTP entry */}
+                            {phoneSection === "reverify-otp" && (
+                              <div className="space-y-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                                <p className="text-xs text-blue-800 font-medium">Enter the 6-digit code sent to your current number:</p>
+                                <Input
+                                  value={phoneOtp}
+                                  onChange={(e) => setPhoneOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                  placeholder="000000"
+                                  className="h-10 border-blue-300 rounded-xl text-sm font-mono tracking-widest text-center"
+                                  maxLength={6}
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    className="flex-1 bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-9 text-xs font-semibold"
+                                    onClick={handleConfirmReverify}
+                                    disabled={phoneLoading || phoneOtp.length !== 6}
+                                  >
+                                    {phoneLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Confirm Code"}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    className="rounded-xl h-9 text-xs border-slate-200"
+                                    onClick={() => { setPhoneSection("view"); setPhoneOtp(""); setPhoneError(null); }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Change number — enter new phone */}
+                            {phoneSection === "change-request" && (
+                              <div className="space-y-3 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                                <p className="text-xs text-slate-600 font-medium">Enter your new mobile number. We'll send a verification code to confirm it.</p>
+                                <div className="relative">
+                                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                  <Input
+                                    value={newPhone}
+                                    onChange={(e) => setNewPhone(e.target.value)}
+                                    placeholder="+1 (555) 000-0000"
+                                    className="pl-9 h-10 border-slate-200 rounded-xl text-sm"
+                                  />
+                                </div>
+                                <div className="flex gap-2">
+                                  <Button
+                                    className="flex-1 bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-9 text-xs font-semibold"
+                                    onClick={handleRequestPhoneChange}
+                                    disabled={phoneLoading || newPhone.replace(/\D/g, "").length < 10}
+                                  >
+                                    {phoneLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Send Code"}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    className="rounded-xl h-9 text-xs border-slate-200"
+                                    onClick={() => { setPhoneSection("view"); setNewPhone(""); setPhoneError(null); }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Change number — enter OTP sent to new number */}
+                            {phoneSection === "change-otp" && (
+                              <div className="space-y-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                                <p className="text-xs text-blue-800 font-medium">
+                                  Enter the 6-digit code sent to <span className="font-mono font-bold">{newPhone}</span>:
+                                </p>
+                                <Input
+                                  value={phoneOtp}
+                                  onChange={(e) => setPhoneOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                  placeholder="000000"
+                                  className="h-10 border-blue-300 rounded-xl text-sm font-mono tracking-widest text-center"
+                                  maxLength={6}
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    className="flex-1 bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-9 text-xs font-semibold"
+                                    onClick={handleConfirmPhoneChange}
+                                    disabled={phoneLoading || phoneOtp.length !== 6}
+                                  >
+                                    {phoneLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Confirm New Number"}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    className="rounded-xl h-9 text-xs border-slate-200"
+                                    onClick={() => { setPhoneSection("change-request"); setPhoneOtp(""); setPhoneError(null); }}
+                                  >
+                                    Back
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Verify / re-verify button (view state) */}
+                            {phoneSection === "view" && !(freshUser as { phoneVerified?: boolean } | undefined)?.phoneVerified && (
+                              <button
+                                onClick={handleReverifyPhone}
+                                disabled={phoneLoading}
+                                className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl h-9 transition-colors disabled:opacity-50"
+                              >
+                                {phoneLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                                Send Verification Code to My Number
+                              </button>
+                            )}
+                            {phoneSection === "view" && (freshUser as { phoneVerified?: boolean } | undefined)?.phoneVerified && (
+                              <button
+                                onClick={handleReverifyPhone}
+                                disabled={phoneLoading}
+                                className="w-full flex items-center justify-center gap-2 text-xs font-medium text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl h-9 transition-colors disabled:opacity-50"
+                              >
+                                {phoneLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                                Re-verify My Number
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>

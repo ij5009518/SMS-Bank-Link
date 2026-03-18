@@ -206,5 +206,127 @@ router.post("/resend-verification", async (req, res) => {
   res.json({ success: true, message: "New code sent." });
 });
 
+// Re-verify current phone (works even if already verified — resets to unverified)
+router.post("/reverify-phone", async (req, res) => {
+  const { userId } = req.body as { userId?: number };
+
+  if (!userId) {
+    return res.status(400).json({ error: "bad_request", message: "User ID is required." });
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) {
+    return res.status(404).json({ error: "not_found", message: "User not found." });
+  }
+
+  const verificationCode = generateVerificationCode();
+  const verificationExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+  await db.update(usersTable)
+    .set({ phoneVerified: false, phoneVerificationCode: verificationCode, phoneVerificationExpiry: verificationExpiry })
+    .where(eq(usersTable.id, userId));
+
+  const e164 = normalizeE164(user.phoneNumber);
+  if (!e164) {
+    return res.status(400).json({ error: "bad_phone", message: "Phone number is invalid." });
+  }
+
+  try {
+    await sendSms(e164, `Your Text Banks verification code is: ${verificationCode}\n\nExpires in 10 minutes. Do not share it.`);
+  } catch {
+    return res.status(500).json({ error: "sms_failed", message: "Could not send SMS. Please try again." });
+  }
+
+  res.json({ success: true, message: "Verification code sent." });
+});
+
+// Request a phone number change — sends OTP to the NEW number
+router.post("/request-phone-change", async (req, res) => {
+  const { userId, newPhoneNumber } = req.body as { userId?: number; newPhoneNumber?: string };
+
+  if (!userId || !newPhoneNumber) {
+    return res.status(400).json({ error: "bad_request", message: "User ID and new phone number are required." });
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) {
+    return res.status(404).json({ error: "not_found", message: "User not found." });
+  }
+
+  const normalizedNew = newPhoneNumber.replace(/\D/g, "");
+  if (normalizedNew.length < 10) {
+    return res.status(400).json({ error: "bad_phone", message: "Please enter a valid phone number." });
+  }
+
+  // Make sure it's not already taken by another account
+  const allUsers = await db.select().from(usersTable);
+  const conflict = allUsers.find((u) =>
+    u.id !== userId && u.phoneNumber.replace(/\D/g, "").replace(/^1/, "") === normalizedNew.replace(/^1/, "")
+  );
+  if (conflict) {
+    return res.status(409).json({ error: "duplicate_phone", message: "That number is already linked to another account." });
+  }
+
+  const code = generateVerificationCode();
+  const expiry = new Date(Date.now() + 10 * 60 * 1000);
+
+  await db.update(usersTable)
+    .set({ pendingPhoneNumber: normalizedNew, pendingPhoneCode: code, pendingPhoneExpiry: expiry })
+    .where(eq(usersTable.id, userId));
+
+  const e164 = normalizeE164(normalizedNew);
+  if (!e164) {
+    return res.status(400).json({ error: "bad_phone", message: "Phone number format is not supported." });
+  }
+
+  try {
+    await sendSms(e164, `Your Text Banks phone change code is: ${code}\n\nEnter this to confirm your new number. Expires in 10 minutes.`);
+  } catch {
+    return res.status(500).json({ error: "sms_failed", message: "Could not send SMS to that number. Check it and try again." });
+  }
+
+  res.json({ success: true, message: "Verification code sent to new number." });
+});
+
+// Confirm phone change — verify OTP sent to the new number
+router.post("/confirm-phone-change", async (req, res) => {
+  const { userId, code } = req.body as { userId?: number; code?: string };
+
+  if (!userId || !code) {
+    return res.status(400).json({ error: "bad_request", message: "User ID and code are required." });
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) {
+    return res.status(404).json({ error: "not_found", message: "User not found." });
+  }
+
+  if (!user.pendingPhoneNumber || !user.pendingPhoneCode || !user.pendingPhoneExpiry) {
+    return res.status(400).json({ error: "no_pending", message: "No phone change in progress. Please request a new code." });
+  }
+
+  if (new Date() > new Date(user.pendingPhoneExpiry)) {
+    return res.status(400).json({ error: "code_expired", message: "This code has expired. Please request a new one." });
+  }
+
+  if (user.pendingPhoneCode !== code.trim()) {
+    return res.status(400).json({ error: "invalid_code", message: "That code is incorrect. Check your new number's SMS." });
+  }
+
+  const [updated] = await db.update(usersTable)
+    .set({
+      phoneNumber: user.pendingPhoneNumber,
+      phoneVerified: true,
+      pendingPhoneNumber: null,
+      pendingPhoneCode: null,
+      pendingPhoneExpiry: null,
+    })
+    .where(eq(usersTable.id, userId))
+    .returning();
+
+  const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, userId));
+  res.json({ success: true, user: safeUser(updated, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+});
+
 export { hashPassword };
 export default router;

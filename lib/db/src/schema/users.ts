@@ -16,6 +16,9 @@ export const usersTable = pgTable("users", {
   phoneVerified: boolean("phone_verified").notNull().default(false),
   phoneVerificationCode: text("phone_verification_code"),
   phoneVerificationExpiry: timestamp("phone_verification_expiry"),
+  pendingPhoneNumber: text("pending_phone_number"),
+  pendingPhoneCode: text("pending_phone_code"),
+  pendingPhoneExpiry: timestamp("pending_phone_expiry"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
