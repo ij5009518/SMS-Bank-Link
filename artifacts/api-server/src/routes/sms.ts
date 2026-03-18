@@ -98,14 +98,20 @@ router.post("/webhook", async (req, res) => {
       await db.update(usersTable).set({ optedOut: false }).where(eq(usersTable.id, user.id));
       responseText = "Welcome back to TextBank! You're now subscribed. Reply HELP for commands.";
     } else if (cmd === "HELP") {
-      responseText = "TextBank Commands:\nBAL - All balances\nBAL [nickname] - Specific account\nTRANS - Recent 5 transactions\nSTOP - Opt out\nReply HELP for this menu";
+      responseText = "TextBank Commands:\nBAL - All balances\nBAL [nick] - One account\nTRANS - Last 5 transactions\nTRANS [n] - Last N transactions\nLAST - Most recent transaction\nLIMIT - Credit card limits\nSPEND - Monthly spend total\nSTOP - Opt out\nSTART - Re-subscribe";
     } else if (cmd === "STOP") {
       await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, user.id));
       responseText = "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
     } else if (cmd === "BAL" || cmd.startsWith("BAL ")) {
       responseText = await handleBalance(cmd, user.id, enrollment?.accessToken);
-    } else if (cmd === "TRANS") {
-      responseText = await handleTransactions(user.id, enrollment?.accessToken);
+    } else if (cmd === "TRANS" || cmd.startsWith("TRANS ")) {
+      responseText = await handleTransactions(cmd, user.id, enrollment?.accessToken);
+    } else if (cmd === "LAST") {
+      responseText = await handleLastTransaction(user.id, enrollment?.accessToken);
+    } else if (cmd === "LIMIT") {
+      responseText = await handleCreditLimit(user.id, enrollment?.accessToken);
+    } else if (cmd === "SPEND") {
+      responseText = await handleSpend(user.id, enrollment?.accessToken);
     } else {
       responseText = "Unknown command. Reply HELP for available commands.";
     }
@@ -162,14 +168,20 @@ router.post("/simulate", async (req, res) => {
     let responseText = "";
 
     if (cmd === "HELP") {
-      responseText = "TextBank Commands:\nBAL - All balances\nBAL [nickname] - Specific account\nTRANS - Recent 5 transactions\nSTOP - Opt out\nReply HELP for this menu";
+      responseText = "TextBank Commands:\nBAL - All balances\nBAL [nick] - One account\nTRANS - Last 5 transactions\nTRANS [n] - Last N transactions\nLAST - Most recent transaction\nLIMIT - Credit card limits\nSPEND - Monthly spend total\nSTOP - Opt out\nSTART - Re-subscribe";
     } else if (cmd === "STOP") {
       await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, userId));
       responseText = "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
     } else if (cmd === "BAL" || cmd.startsWith("BAL ")) {
       responseText = await handleBalance(cmd, userId, enrollment?.accessToken);
-    } else if (cmd === "TRANS") {
-      responseText = await handleTransactions(userId, enrollment?.accessToken);
+    } else if (cmd === "TRANS" || cmd.startsWith("TRANS ")) {
+      responseText = await handleTransactions(cmd, userId, enrollment?.accessToken);
+    } else if (cmd === "LAST") {
+      responseText = await handleLastTransaction(userId, enrollment?.accessToken);
+    } else if (cmd === "LIMIT") {
+      responseText = await handleCreditLimit(userId, enrollment?.accessToken);
+    } else if (cmd === "SPEND") {
+      responseText = await handleSpend(userId, enrollment?.accessToken);
     } else {
       responseText = "Unknown command. Reply HELP for available commands.";
     }
@@ -270,7 +282,11 @@ async function handleBalance(cmd: string, userId: number, accessToken?: string):
   return `TextBank Balances:\n${lines.join("\n")}`;
 }
 
-async function handleTransactions(userId: number, accessToken?: string): Promise<string> {
+async function handleTransactions(cmd: string, userId: number, accessToken?: string): Promise<string> {
+  const arg = cmd.startsWith("TRANS ") ? cmd.slice(6).trim() : "";
+  const countArg = parseInt(arg);
+  const count = !isNaN(countArg) && countArg > 0 ? Math.min(countArg, 10) : 5;
+
   if (accessToken) {
     try {
       const allEnrollments = await db.select().from(tellerEnrollmentsTable).where(eq(tellerEnrollmentsTable.userId, userId));
@@ -282,19 +298,27 @@ async function handleTransactions(userId: number, accessToken?: string): Promise
         return "No accounts linked. Visit our website to re-link your bank.";
       }
 
-      const primary = tellerAccounts[0];
-      const txns = await listTransactions(firstGoodEnrollment.accessToken, primary.id, 5);
+      // If arg is a non-number, try to match an account
+      const targetAccount = (!isNaN(countArg) || arg === "")
+        ? tellerAccounts[0]
+        : tellerAccounts.find((a) =>
+            a.name.toLowerCase().includes(arg.toLowerCase()) ||
+            a.subtype.toLowerCase().includes(arg.toLowerCase()) ||
+            a.last_four.includes(arg)
+          ) ?? tellerAccounts[0];
+
+      const txns = await listTransactions(firstGoodEnrollment.accessToken, targetAccount.id, count);
       if (txns.length === 0) return "No recent transactions found.";
 
       const lines = txns.map((t) => {
         const amount = parseFloat(t.amount);
-        const sign = amount < 0 ? "" : "+";
+        const sign = t.type === "credit" ? "+" : "-";
         const name = t.details?.counterparty?.name || t.description;
         const date = new Date(t.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
         return `${date} ${name}: ${sign}$${Math.abs(amount).toFixed(2)}`;
       });
 
-      return `Recent Transactions (${primary.name}):\n${lines.join("\n")}`;
+      return `Transactions (${targetAccount.name}):\n${lines.join("\n")}`;
     } catch {
       // fall through to DB
     }
@@ -303,9 +327,9 @@ async function handleTransactions(userId: number, accessToken?: string): Promise
   const txns = await db.select().from(transactionsTable)
     .where(eq(transactionsTable.userId, userId))
     .orderBy(desc(transactionsTable.transactionDate))
-    .limit(5);
+    .limit(count);
 
-  if (txns.length === 0) return "No recent transactions found.";
+  if (txns.length === 0) return "No transactions on record. Try syncing your account at textbanks.com.";
 
   const lines = txns.map((t) => {
     const sign = t.type === "debit" ? "-" : "+";
@@ -313,6 +337,160 @@ async function handleTransactions(userId: number, accessToken?: string): Promise
     return `${date} ${t.merchantName}: ${sign}$${Number(t.amount).toFixed(2)}`;
   });
   return `Recent Transactions:\n${lines.join("\n")}`;
+}
+
+async function handleLastTransaction(userId: number, accessToken?: string): Promise<string> {
+  if (accessToken) {
+    try {
+      const [enrollment] = await db.select().from(tellerEnrollmentsTable).where(eq(tellerEnrollmentsTable.userId, userId));
+      if (!enrollment) throw new Error("no enrollment");
+
+      const accounts = await listAccounts(enrollment.accessToken);
+      if (accounts.length === 0) return "No accounts linked.";
+
+      const txns = await listTransactions(enrollment.accessToken, accounts[0].id, 1);
+      if (txns.length === 0) return "No transactions found.";
+
+      const t = txns[0];
+      const amount = parseFloat(t.amount);
+      const sign = t.type === "credit" ? "+" : "-";
+      const name = t.details?.counterparty?.name || t.description;
+      const date = new Date(t.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const cat = t.details?.category ? ` (${t.details.category})` : "";
+      return `Last Transaction:\n${date} ${name}: ${sign}$${Math.abs(amount).toFixed(2)}${cat}`;
+    } catch {
+      // fall through
+    }
+  }
+
+  const [txn] = await db.select().from(transactionsTable)
+    .where(eq(transactionsTable.userId, userId))
+    .orderBy(desc(transactionsTable.transactionDate))
+    .limit(1);
+
+  if (!txn) return "No transactions on record. Try syncing at textbanks.com.";
+  const sign = txn.type === "debit" ? "-" : "+";
+  const date = new Date(txn.transactionDate).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `Last Transaction:\n${date} ${txn.merchantName}: ${sign}$${Number(txn.amount).toFixed(2)}`;
+}
+
+async function handleCreditLimit(userId: number, accessToken?: string): Promise<string> {
+  if (accessToken) {
+    try {
+      const allEnrollments = await db.select().from(tellerEnrollmentsTable).where(eq(tellerEnrollmentsTable.userId, userId));
+
+      const allAccounts = (
+        await Promise.allSettled(allEnrollments.map((e) => listAccounts(e.accessToken)))
+      )
+        .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof listAccounts>>> => r.status === "fulfilled")
+        .flatMap((r) => r.value);
+
+      const creditAccounts = allAccounts.filter((a) =>
+        a.type === "credit" || a.subtype === "credit_card"
+      );
+
+      if (creditAccounts.length === 0) {
+        return "No credit card accounts found. Reply BAL for all account balances.";
+      }
+
+      const enrollmentMap = new Map(allEnrollments.map((e) => [e.enrollmentId, e.accessToken]));
+
+      const lines = await Promise.all(
+        creditAccounts.map(async (acct) => {
+          const token = enrollmentMap.get(acct.enrollment_id) ?? accessToken;
+          try {
+            const bal = await getBalance(token, acct.id);
+            const owed = parseFloat(bal.ledger ?? "0");
+            const available = parseFloat(bal.available ?? "0");
+            const limit = owed + available;
+            return `${acct.institution.name} ••••${acct.last_four}:\nOwed: $${owed.toFixed(2)}\nAvailable: $${available.toFixed(2)}\nLimit: $${limit.toFixed(2)}`;
+          } catch {
+            return `${acct.institution.name} ••••${acct.last_four}: unavailable`;
+          }
+        })
+      );
+
+      return `Credit Card Info:\n${lines.join("\n---\n")}`;
+    } catch {
+      // fall through
+    }
+  }
+
+  const accounts = await db.select().from(accountsTable)
+    .where(eq(accountsTable.userId, userId));
+  const creditAccounts = accounts.filter((a) => a.accountType === "credit");
+
+  if (creditAccounts.length === 0) {
+    return "No credit card accounts found. Reply BAL for all account balances.";
+  }
+
+  const lines = creditAccounts.map((a) =>
+    `${a.bankName} ••••${a.accountLastFour}: $${Number(a.currentBalance).toFixed(2)} owed`
+  );
+  return `Credit Cards:\n${lines.join("\n")}`;
+}
+
+async function handleSpend(userId: number, accessToken?: string): Promise<string> {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthName = now.toLocaleDateString("en-US", { month: "long" });
+
+  if (accessToken) {
+    try {
+      const allEnrollments = await db.select().from(tellerEnrollmentsTable).where(eq(tellerEnrollmentsTable.userId, userId));
+      const firstEnrollment = allEnrollments[0];
+      if (!firstEnrollment) throw new Error("no enrollment");
+
+      const accounts = await listAccounts(firstEnrollment.accessToken);
+      if (accounts.length === 0) return "No accounts linked.";
+
+      let totalSpend = 0;
+      const categoryTotals = new Map<string, number>();
+
+      await Promise.all(
+        accounts.map(async (acct) => {
+          const txns = await listTransactions(firstEnrollment.accessToken, acct.id, 50);
+          for (const t of txns) {
+            if (t.type !== "debit") continue;
+            if (new Date(t.date) < monthStart) continue;
+            const amount = Math.abs(parseFloat(t.amount));
+            totalSpend += amount;
+            const cat = t.details?.category || "other";
+            categoryTotals.set(cat, (categoryTotals.get(cat) ?? 0) + amount);
+          }
+        })
+      );
+
+      if (totalSpend === 0) return `${monthName} Spending: $0.00 so far.`;
+
+      const topCats = [...categoryTotals.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([cat, amt]) => `  ${cat}: $${amt.toFixed(2)}`);
+
+      return `${monthName} Spending:\nTotal: $${totalSpend.toFixed(2)}\nTop categories:\n${topCats.join("\n")}`;
+    } catch {
+      // fall through
+    }
+  }
+
+  const txns = await db.select().from(transactionsTable)
+    .where(eq(transactionsTable.userId, userId));
+
+  const monthTxns = txns.filter((t) => t.type === "debit" && new Date(t.transactionDate) >= monthStart);
+  if (monthTxns.length === 0) return `${monthName} Spending: No debit transactions on record.`;
+
+  const total = monthTxns.reduce((sum, t) => sum + Number(t.amount), 0);
+  const catMap = new Map<string, number>();
+  for (const t of monthTxns) {
+    catMap.set(t.category, (catMap.get(t.category) ?? 0) + Number(t.amount));
+  }
+  const topCats = [...catMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([cat, amt]) => `  ${cat}: $${amt.toFixed(2)}`);
+
+  return `${monthName} Spending:\nTotal: $${total.toFixed(2)}\nTop categories:\n${topCats.join("\n")}`;
 }
 
 export default router;

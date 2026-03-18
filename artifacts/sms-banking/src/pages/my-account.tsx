@@ -123,9 +123,9 @@ export default function MyAccountPage() {
     }
   }, []);
 
-  const { data: freshUser } = useGetUser(session?.id ?? 0, { query: { enabled: !!session } });
-  const { data: transactions } = useGetUserTransactions(session?.id ?? 0, {}, { query: { enabled: !!session } });
-  const { data: smsLogs } = useGetSmsLogs({ userId: session?.id, limit: 20 }, { query: { enabled: !!session } });
+  const { data: freshUser } = useGetUser(session?.id ?? 0, { query: { enabled: !!session, refetchInterval: 60000 } });
+  const { data: transactions, refetch: refetchTransactions } = useGetUserTransactions(session?.id ?? 0, {}, { query: { enabled: !!session, refetchInterval: 60000 } });
+  const { data: smsLogs } = useGetSmsLogs({ userId: session?.id, limit: 20 }, { query: { enabled: !!session, refetchInterval: 15000 } });
 
   const userAccounts = (freshUser as {
     accounts?: Array<{ id: number; bankName: string; accountType: string; accountLastFour: string; nickname: string; currentBalance: number }>;
@@ -275,6 +275,38 @@ export default function MyAccountPage() {
       setIsSyncing(false);
     }
   };
+
+  const [isSyncingTxns, setIsSyncingTxns] = useState(false);
+  const [txnSyncMessage, setTxnSyncMessage] = useState<string | null>(null);
+
+  const handleSyncTransactions = async () => {
+    if (!session) return;
+    setIsSyncingTxns(true);
+    setTxnSyncMessage(null);
+    try {
+      const res = await fetch(`/api/teller/sync-transactions/${session.id}`, { method: "POST" });
+      const data = await res.json() as { success?: boolean; synced?: number; message?: string };
+      if (!res.ok) { setTxnSyncMessage("Sync failed. Make sure your bank is connected."); return; }
+      await refetchTransactions();
+      setTxnSyncMessage(data.synced ? `${data.synced} transaction${data.synced !== 1 ? "s" : ""} synced.` : (data.message ?? "Up to date."));
+      setTimeout(() => setTxnSyncMessage(null), 5000);
+    } catch {
+      setTxnSyncMessage("Network error. Please try again.");
+    } finally {
+      setIsSyncingTxns(false);
+    }
+  };
+
+  // Auto-sync transactions once when dashboard first loads
+  const txnSyncedRef = useRef(false);
+  useEffect(() => {
+    if (!session || txnSyncedRef.current) return;
+    txnSyncedRef.current = true;
+    fetch(`/api/teller/sync-transactions/${session.id}`, { method: "POST" })
+      .then((r) => r.json())
+      .then(() => refetchTransactions())
+      .catch(() => {});
+  }, [session]);
 
   const navItems: { key: Section; label: string; icon: typeof Building2 }[] = [
     { key: "accounts", label: "Accounts", icon: Building2 },
@@ -589,19 +621,38 @@ export default function MyAccountPage() {
                   {activeSection === "activity" && (
                     <motion.div key="activity" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                        <div className="px-5 py-4 border-b border-slate-100">
-                          <h3 className="font-bold text-slate-900 text-sm">Recent Transactions</h3>
-                          <p className="text-xs text-slate-400 mt-0.5">Last transactions on record</p>
+                        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                          <div>
+                            <h3 className="font-bold text-slate-900 text-sm">Recent Transactions</h3>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {txnSyncMessage
+                                ? <span className="text-emerald-600 font-medium">{txnSyncMessage}</span>
+                                : "Synced from your linked bank accounts"}
+                            </p>
+                          </div>
+                          <button
+                            onClick={handleSyncTransactions}
+                            disabled={isSyncingTxns}
+                            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 font-medium px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 transition-all disabled:opacity-50"
+                          >
+                            <RefreshCw className={cn("w-3.5 h-3.5", isSyncingTxns && "animate-spin")} />
+                            {isSyncingTxns ? "Syncing…" : "Refresh"}
+                          </button>
                         </div>
                         {!transactions || (transactions as unknown[]).length === 0 ? (
                           <div className="py-12 text-center text-slate-400 text-sm">
                             <CreditCard className="w-8 h-8 mx-auto mb-3 opacity-30" />
-                            No transactions on record yet.
+                            <p className="mb-3">{isSyncingTxns ? "Loading transactions…" : "No transactions on record yet."}</p>
+                            {!isSyncingTxns && userAccounts.length > 0 && (
+                              <button onClick={handleSyncTransactions} className="text-blue-600 hover:underline text-xs font-medium">
+                                Sync now
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <div className="divide-y divide-slate-100">
                             {(transactions as Array<{ id: number; merchantName: string; category: string; amount: number; type: string; transactionDate: string }>)
-                              .slice(0, 10).map((txn) => {
+                              .slice(0, 25).map((txn) => {
                                 const isCredit = txn.type === "credit";
                                 return (
                                   <div key={txn.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors">
@@ -685,11 +736,22 @@ export default function MyAccountPage() {
                       </div>
 
                       <div className="mt-4 bg-slate-900 rounded-2xl p-5">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Quick Commands</p>
-                        <div className="grid grid-cols-2 gap-3">
-                          {[["BAL", "All balances"], ["TRANS", "Recent transactions"], ["BAL [name]", "Specific account"], ["STOP", "Unsubscribe"]].map(([cmd, desc]) => (
-                            <div key={cmd} className="flex items-center gap-2">
-                              <code className="text-blue-400 font-mono font-bold text-xs">{cmd}</code>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">All Commands</p>
+                        <div className="grid grid-cols-1 gap-2.5">
+                          {[
+                            ["BAL", "All account balances"],
+                            ["BAL [nickname]", "Balance for one account"],
+                            ["TRANS", "Last 5 transactions"],
+                            ["TRANS [n]", "Last N transactions (max 10)"],
+                            ["LAST", "Single most recent transaction"],
+                            ["LIMIT", "Credit card limits & available"],
+                            ["SPEND", "This month's spending by category"],
+                            ["STOP", "Unsubscribe from SMS"],
+                            ["START", "Re-subscribe to SMS"],
+                            ["HELP", "Show command list"],
+                          ].map(([cmd, desc]) => (
+                            <div key={cmd} className="flex items-center gap-3">
+                              <code className="text-blue-400 font-mono font-bold text-xs w-28 shrink-0">{cmd}</code>
                               <span className="text-slate-500 text-xs">{desc}</span>
                             </div>
                           ))}

@@ -3,13 +3,15 @@ import { db } from "@workspace/db";
 import {
   tellerEnrollmentsTable,
   accountsTable,
+  transactionsTable,
   usersTable,
 } from "@workspace/db/schema";
 import { TellerEnrollBody } from "@workspace/api-zod";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import {
   listAccounts,
   getBalance,
+  listTransactions,
   getTellerAppId,
   type TellerAccount,
 } from "../lib/teller.js";
@@ -213,6 +215,81 @@ router.get("/accounts/:userId", async (req, res) => {
   }
 
   res.json(allAccounts.flat());
+});
+
+router.post("/sync-transactions/:userId", async (req, res) => {
+  const userId = parseInt(req.params.userId);
+  if (isNaN(userId)) {
+    return res.status(400).json({ error: "bad_request", message: "Invalid user ID" });
+  }
+
+  const enrollments = await db
+    .select()
+    .from(tellerEnrollmentsTable)
+    .where(eq(tellerEnrollmentsTable.userId, userId));
+
+  if (enrollments.length === 0) {
+    return res.json({ success: true, synced: 0, message: "No bank connections found" });
+  }
+
+  let totalSynced = 0;
+  const errors: string[] = [];
+
+  for (const enrollment of enrollments) {
+    try {
+      const tellerAccounts = await listAccounts(enrollment.accessToken);
+
+      for (const acct of tellerAccounts) {
+        const dbAccount = await db
+          .select({ id: accountsTable.id })
+          .from(accountsTable)
+          .where(and(
+            eq(accountsTable.userId, userId),
+            eq(accountsTable.tellerAccountId, acct.id)
+          ))
+          .limit(1);
+
+        if (dbAccount.length === 0) continue;
+        const accountId = dbAccount[0].id;
+
+        const txns = await listTransactions(enrollment.accessToken, acct.id, 25);
+
+        if (txns.length === 0) continue;
+
+        await db.delete(transactionsTable).where(
+          and(
+            eq(transactionsTable.userId, userId),
+            eq(transactionsTable.accountId, accountId)
+          )
+        );
+
+        const rows = txns.map((t) => ({
+          accountId,
+          userId,
+          description: t.description,
+          amount: String(Math.abs(parseFloat(t.amount))),
+          type: t.type,
+          category: t.details?.category || "other",
+          merchantName: t.details?.counterparty?.name || t.description,
+          transactionDate: new Date(t.date),
+          runningBalance: String(parseFloat(t.running_balance || "0")),
+        }));
+
+        await db.insert(transactionsTable).values(rows);
+        totalSynced += rows.length;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[Teller] Transaction sync failed for enrollment ${enrollment.enrollmentId}:`, msg);
+      errors.push(`${enrollment.institutionName}: ${msg}`);
+    }
+  }
+
+  res.json({
+    success: true,
+    synced: totalSynced,
+    errors: errors.length > 0 ? errors : undefined,
+  });
 });
 
 function normalizeAccountType(type: string, subtype: string): "checking" | "savings" | "credit" {
