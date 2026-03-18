@@ -56,7 +56,7 @@ async function getUncachableResendClient() {
   return { client: new Resend(apiKey), fromEmail };
 }
 
-export async function sendWelcomeEmail(to: string, firstName: string, phoneNumber: string): Promise<boolean> {
+export async function sendWelcomeEmail(to: string, firstName: string, phoneNumber: string, emailVerificationToken?: string): Promise<boolean> {
   try {
     const { client, fromEmail } = await getUncachableResendClient();
 
@@ -64,7 +64,7 @@ export async function sendWelcomeEmail(to: string, firstName: string, phoneNumbe
       from: fromEmail,
       to,
       subject: `Welcome to Text Banks, ${firstName} — your account is ready`,
-      html: buildWelcomeHtml(firstName, phoneNumber),
+      html: buildWelcomeHtml(firstName, phoneNumber, emailVerificationToken),
     });
 
     if (error) {
@@ -80,6 +80,91 @@ export async function sendWelcomeEmail(to: string, firstName: string, phoneNumbe
   }
 }
 
+export async function sendEmailVerificationEmail(to: string, firstName: string, verificationToken: string): Promise<boolean> {
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+    const verifyUrl = `${WEBSITE_URL}/my-account?email_token=${verificationToken}`;
+
+    const { error } = await client.emails.send({
+      from: fromEmail,
+      to,
+      subject: "Verify your Text Banks email address",
+      html: `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 16px;"><tr><td align="center">
+    <table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#fff;border-radius:20px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
+      <tr><td style="background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%);padding:28px 40px;">
+        <span style="color:#fff;font-size:20px;font-weight:800;letter-spacing:-0.5px;">Text Banks</span>
+      </td></tr>
+      <tr><td style="padding:40px;">
+        <h1 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#0f172a;">Verify your email, ${firstName}</h1>
+        <p style="margin:0 0 28px;font-size:15px;color:#64748b;line-height:1.6;">Click the button below to confirm your email address. This link expires in 72 hours.</p>
+        <a href="${verifyUrl}" style="display:block;background:#2563eb;color:#fff;text-align:center;padding:16px 24px;border-radius:12px;font-size:15px;font-weight:700;text-decoration:none;margin-bottom:24px;">Verify My Email &rarr;</a>
+        <p style="margin:0;font-size:12px;color:#94a3b8;">Or copy this link: <span style="color:#2563eb;">${verifyUrl}</span></p>
+      </td></tr>
+      <tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:20px 40px;text-align:center;">
+        <p style="margin:0;font-size:12px;color:#94a3b8;">If you didn't create a Text Banks account, you can safely ignore this email.</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`,
+    });
+
+    if (error) { console.error("[Email] Resend error (verify):", error); return false; }
+    console.log(`[Email] Verification email sent to ${to}`);
+    return true;
+  } catch (err) {
+    console.warn("[Email] Could not send verification email:", err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
+export async function sendDeviceVerificationEmail(to: string, firstName: string, code: string): Promise<boolean> {
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+
+    const { error } = await client.emails.send({
+      from: fromEmail,
+      to,
+      subject: `${code} — Text Banks device verification`,
+      html: `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 16px;"><tr><td align="center">
+    <table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#fff;border-radius:20px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
+      <tr><td style="background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%);padding:28px 40px;">
+        <span style="color:#fff;font-size:20px;font-weight:800;letter-spacing:-0.5px;">Text Banks</span>
+        <span style="float:right;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;font-size:11px;font-weight:700;letter-spacing:0.06em;border-radius:20px;padding:5px 12px;">NEW DEVICE</span>
+      </td></tr>
+      <tr><td style="padding:40px;">
+        <h1 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#0f172a;">New device sign-in, ${firstName}</h1>
+        <p style="margin:0 0 28px;font-size:15px;color:#64748b;line-height:1.6;">Someone is signing in to Text Banks from a new device or browser. If this was you, enter the code below. It expires in <strong>10 minutes</strong>.</p>
+        <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:14px;padding:24px;text-align:center;margin-bottom:24px;">
+          <p style="margin:0 0 6px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#1d4ed8;">Your verification code</p>
+          <p style="margin:0;font-size:42px;font-weight:900;color:#1e3a8a;letter-spacing:8px;font-family:'Courier New',monospace;">${code}</p>
+        </div>
+        <div style="background:#fef9ec;border:1px solid #fde68a;border-radius:10px;padding:14px 18px;">
+          <p style="margin:0;font-size:13px;color:#92400e;">If you did not attempt to sign in, your password may be compromised. Change it immediately.</p>
+        </div>
+      </td></tr>
+      <tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:20px 40px;text-align:center;">
+        <p style="margin:0;font-size:12px;color:#94a3b8;">Text Banks &nbsp;·&nbsp; Read-only banking by SMS &nbsp;·&nbsp; <a href="${WEBSITE_URL}" style="color:#94a3b8;text-decoration:none;">textbanks.app</a></p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`,
+    });
+
+    if (error) { console.error("[Email] Resend error (device):", error); return false; }
+    console.log(`[Email] Device verification email sent to ${to}`);
+    return true;
+  } catch (err) {
+    console.warn("[Email] Could not send device verification email:", err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
 export async function isEmailConfigured(): Promise<boolean> {
   try {
     await getCredentials();
@@ -89,7 +174,8 @@ export async function isEmailConfigured(): Promise<boolean> {
   }
 }
 
-function buildWelcomeHtml(firstName: string, phoneNumber: string): string {
+function buildWelcomeHtml(firstName: string, phoneNumber: string, verificationToken?: string): string {
+  const verifyUrl = verificationToken ? `${WEBSITE_URL}/my-account?email_token=${verificationToken}` : null;
   const formattedPhone = phoneNumber.replace(/^1?(\d{3})(\d{3})(\d{4})$/, "+1 ($1) $2-$3");
 
   const steps = [
@@ -201,7 +287,17 @@ function buildWelcomeHtml(firstName: string, phoneNumber: string): string {
               Your Text Banks account is live. Link your bank account and you'll be able to check balances and transactions from any phone — just by sending a text.
             </p>
 
-            <!-- CTA Button -->
+            <!-- Verify Email CTA -->
+            ${verifyUrl ? `<table cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:14px;">
+              <tr><td>
+                <a href="${verifyUrl}"
+                   style="display:block;background:#059669;color:#fff;text-align:center;padding:16px 24px;border-radius:12px;font-size:15px;font-weight:700;text-decoration:none;">
+                  &#10003;&nbsp; Verify My Email Address
+                </a>
+              </td></tr>
+            </table>` : ""}
+
+            <!-- Dashboard CTA -->
             <table cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:36px;">
               <tr>
                 <td>

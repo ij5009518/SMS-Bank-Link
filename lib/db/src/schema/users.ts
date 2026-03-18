@@ -19,6 +19,11 @@ export const usersTable = pgTable("users", {
   pendingPhoneNumber: text("pending_phone_number"),
   pendingPhoneCode: text("pending_phone_code"),
   pendingPhoneExpiry: timestamp("pending_phone_expiry"),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  emailVerificationToken: text("email_verification_token").unique(),
+  emailVerificationTokenExpiry: timestamp("email_verification_token_expiry"),
+  deviceVerificationCode: text("device_verification_code"),
+  deviceVerificationExpiry: timestamp("device_verification_expiry"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -70,6 +70,11 @@ function saveSession(user: SessionUser) {
 function clearSession() {
   localStorage.removeItem(SESSION_KEY);
 }
+
+// Device trust token helpers (per-user, 30-day localStorage token)
+const deviceTokenKey = (userId: number) => `tb_device_${userId}`;
+function getDeviceToken(userId: number) { return localStorage.getItem(deviceTokenKey(userId)); }
+function saveDeviceToken(userId: number, token: string) { localStorage.setItem(deviceTokenKey(userId), token); }
 function cn(...classes: (string | undefined | null | false)[]) {
   return classes.filter(Boolean).join(" ");
 }
@@ -94,6 +99,20 @@ export default function MyAccountPage() {
   // Sign-in
   const [signInPhone, setSignInPhone] = useState("");
   const [signInPassword, setSignInPassword] = useState("");
+
+  // Device verification state (shown after correct password on new device)
+  const [deviceStep, setDeviceStep] = useState<"idle" | "verify">("idle");
+  const [deviceUserId, setDeviceUserId] = useState<number | null>(null);
+  const [deviceFirstName, setDeviceFirstName] = useState("");
+  const [deviceEmailMasked, setDeviceEmailMasked] = useState<string | null>(null);
+  const [deviceCode, setDeviceCode] = useState("");
+  const [deviceLoading, setDeviceLoading] = useState(false);
+  const [deviceError, setDeviceError] = useState<string | null>(null);
+
+  // Email verification state
+  const [emailVerifyLoading, setEmailVerifyLoading] = useState(false);
+  const [emailVerifyStatus, setEmailVerifyStatus] = useState<"idle" | "success" | "error">("idle");
+  const [emailVerifyMsg, setEmailVerifyMsg] = useState<string | null>(null);
 
   // Sign-up
   const [signUpFirst, setSignUpFirst] = useState("");
@@ -130,6 +149,31 @@ export default function MyAccountPage() {
       setEditLastName(s.lastName);
       setSmsOptedIn(!s.optedOut);
     }
+
+    // Check for email verification token in URL
+    const params = new URLSearchParams(window.location.search);
+    const emailToken = params.get("email_token");
+    if (emailToken) {
+      setEmailVerifyLoading(true);
+      fetch("/api/auth/verify-email", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: emailToken }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success) {
+            setEmailVerifyStatus("success");
+            setEmailVerifyMsg("Your email has been verified successfully.");
+          } else {
+            setEmailVerifyStatus("error");
+            setEmailVerifyMsg(data.message || "Email verification failed.");
+          }
+        })
+        .catch(() => { setEmailVerifyStatus("error"); setEmailVerifyMsg("Network error during email verification."); })
+        .finally(() => setEmailVerifyLoading(false));
+      // Strip token from URL
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }, []);
 
   const { data: freshUser } = useGetUser(session?.id ?? 0, { query: { enabled: !!session, refetchInterval: 60000 } });
@@ -145,11 +189,48 @@ export default function MyAccountPage() {
     if (!signInPhone.trim() || !signInPassword.trim()) { setError("Please enter your phone number and password."); return; }
     setIsLoading(true);
     try {
+      // Try to find a saved device token for any existing account
+      // We don't know the userId yet, so we send without token first,
+      // then handle device_unverified to get the userId
       const res = await fetch("/api/auth/login", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phoneNumber: signInPhone, password: signInPassword }),
       });
       const data = await res.json();
+
+      // If device_unverified: password was correct but device needs verification
+      if (res.status === 403 && data.error === "device_unverified") {
+        // Check if we already have a stored device token for this user
+        const storedToken = getDeviceToken(data.userId);
+        if (storedToken) {
+          // Try again with the stored token
+          const res2 = await fetch("/api/auth/login", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phoneNumber: signInPhone, password: signInPassword, deviceToken: storedToken }),
+          });
+          const data2 = await res2.json();
+          if (res2.ok) {
+            const user: SessionUser = { id: data2.id, firstName: data2.firstName, lastName: data2.lastName, phoneNumber: data2.phoneNumber, onboardingStatus: data2.onboardingStatus, optedOut: data2.optedOut };
+            saveSession(user); setSession(user);
+            setEditFirstName(user.firstName); setEditLastName(user.lastName); setSmsOptedIn(!user.optedOut);
+            return;
+          }
+        }
+        // No valid stored token — show device verification screen
+        setDeviceStep("verify");
+        setDeviceUserId(data.userId);
+        setDeviceFirstName(data.firstName);
+        setDeviceEmailMasked(data.email ?? null);
+        setDeviceCode("");
+        setDeviceError(null);
+        // Auto-fire: send the device code immediately
+        fetch("/api/auth/send-device-code", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: data.userId }),
+        }).catch(() => {});
+        return;
+      }
+
       if (!res.ok) { setError(data.message || "Sign in failed."); return; }
       const user: SessionUser = { id: data.id, firstName: data.firstName, lastName: data.lastName, phoneNumber: data.phoneNumber, onboardingStatus: data.onboardingStatus, optedOut: data.optedOut };
       saveSession(user);
@@ -159,6 +240,56 @@ export default function MyAccountPage() {
       setSmsOptedIn(!user.optedOut);
     } catch { setError("Network error. Please try again."); }
     finally { setIsLoading(false); }
+  };
+
+  const handleVerifyDevice = async () => {
+    if (!deviceUserId || !deviceCode.trim()) return;
+    setDeviceLoading(true); setDeviceError(null);
+    try {
+      const deviceName = `${navigator.platform || "Browser"} — ${new Date().toLocaleDateString()}`;
+      const res = await fetch("/api/auth/verify-device", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: deviceUserId, code: deviceCode, deviceName }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setDeviceError(data.message || "Invalid code."); return; }
+      // Save device token for future logins
+      saveDeviceToken(deviceUserId, data.deviceToken);
+      // Log the user in
+      const u = data.user;
+      const user: SessionUser = { id: u.id, firstName: u.firstName, lastName: u.lastName, phoneNumber: u.phoneNumber, onboardingStatus: u.onboardingStatus, optedOut: u.optedOut };
+      saveSession(user); setSession(user);
+      setEditFirstName(user.firstName); setEditLastName(user.lastName); setSmsOptedIn(!user.optedOut);
+      setDeviceStep("idle"); setDeviceCode("");
+    } catch { setDeviceError("Network error. Please try again."); }
+    finally { setDeviceLoading(false); }
+  };
+
+  const handleResendDeviceCode = async () => {
+    if (!deviceUserId) return;
+    setDeviceLoading(true); setDeviceError(null);
+    try {
+      await fetch("/api/auth/send-device-code", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: deviceUserId }),
+      });
+    } catch { setDeviceError("Could not resend code. Please try again."); }
+    finally { setDeviceLoading(false); }
+  };
+
+  const handleResendEmailVerification = async () => {
+    if (!session) return;
+    setEmailVerifyLoading(true);
+    try {
+      const res = await fetch("/api/auth/resend-email-verification", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: session.id }),
+      });
+      const data = await res.json();
+      setEmailVerifyStatus(res.ok ? "success" : "error");
+      setEmailVerifyMsg(res.ok ? "Verification email sent — check your inbox." : (data.message || "Failed to send."));
+    } catch { setEmailVerifyStatus("error"); setEmailVerifyMsg("Network error."); }
+    finally { setEmailVerifyLoading(false); }
   };
 
   const handleSignUp = async () => {
@@ -424,7 +555,65 @@ export default function MyAccountPage() {
                 </div>
 
                 <AnimatePresence mode="wait">
-                  {tab === "signin" && (
+                  {/* ── Device Verification Screen ── */}
+                  {deviceStep === "verify" && (
+                    <motion.div key="device-verify" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+                      <div className="p-6 space-y-4">
+                        <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                          <div className="w-9 h-9 bg-amber-100 rounded-lg flex items-center justify-center shrink-0">
+                            <ShieldCheck className="w-5 h-5 text-amber-700" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-amber-900">New Device Detected</p>
+                            <p className="text-xs text-amber-700">Hi {deviceFirstName} — verify this browser to continue.</p>
+                          </div>
+                        </div>
+                        {deviceEmailMasked ? (
+                          <p className="text-xs text-slate-500 leading-relaxed">
+                            A 6-digit code was sent to <strong className="text-slate-700">{deviceEmailMasked}</strong>. Enter it below to trust this device for 30 days.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-slate-500 leading-relaxed">
+                            A 6-digit code was sent to your registered phone number. Enter it below to trust this device for 30 days.
+                          </p>
+                        )}
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-slate-700">Verification Code</label>
+                          <Input
+                            value={deviceCode}
+                            onChange={(e) => setDeviceCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                            onKeyDown={(e) => e.key === "Enter" && deviceCode.length === 6 && handleVerifyDevice()}
+                            placeholder="000000"
+                            className="h-11 border-blue-300 rounded-xl text-lg font-mono tracking-widest text-center"
+                            maxLength={6}
+                            autoFocus
+                          />
+                        </div>
+                        {deviceError && (
+                          <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+                            <AlertCircle className="w-4 h-4 shrink-0" />{deviceError}
+                          </div>
+                        )}
+                        <Button
+                          className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm"
+                          onClick={handleVerifyDevice}
+                          disabled={deviceLoading || deviceCode.length !== 6}
+                        >
+                          {deviceLoading ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Verifying…</> : "Verify & Sign In"}
+                        </Button>
+                        <div className="flex items-center justify-between text-xs text-slate-400">
+                          <button onClick={handleResendDeviceCode} disabled={deviceLoading} className="text-blue-600 hover:underline font-medium disabled:opacity-50">
+                            Resend code
+                          </button>
+                          <button onClick={() => { setDeviceStep("idle"); setDeviceCode(""); setDeviceError(null); }} className="text-slate-400 hover:text-slate-600">
+                            Back to sign in
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {tab === "signin" && deviceStep === "idle" && (
                     <motion.div key="signin" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }}>
                       <div className="p-6 space-y-4">
                         <div className="space-y-1.5">
@@ -589,6 +778,49 @@ export default function MyAccountPage() {
               </div>
 
               <div className="container mx-auto px-4 md:px-6 py-8 max-w-3xl">
+
+                {/* Email verification token result banner */}
+                {emailVerifyStatus === "success" && (
+                  <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 mb-5">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-emerald-800">Email verified!</p>
+                      <p className="text-xs text-emerald-700">{emailVerifyMsg}</p>
+                    </div>
+                    <button onClick={() => setEmailVerifyStatus("idle")} className="text-emerald-400 hover:text-emerald-600 text-xs">Dismiss</button>
+                  </div>
+                )}
+                {emailVerifyStatus === "error" && (
+                  <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-5">
+                    <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-red-800">Verification failed</p>
+                      <p className="text-xs text-red-700">{emailVerifyMsg}</p>
+                    </div>
+                    <button onClick={() => setEmailVerifyStatus("idle")} className="text-red-400 hover:text-red-600 text-xs">Dismiss</button>
+                  </div>
+                )}
+
+                {/* Email not-verified nudge banner */}
+                {(freshUser as { emailVerified?: boolean; email?: string } | undefined)?.email &&
+                  !(freshUser as { emailVerified?: boolean } | undefined)?.emailVerified &&
+                  emailVerifyStatus === "idle" && (
+                  <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5">
+                    <Mail className="w-5 h-5 text-amber-600 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-amber-900">Please verify your email address</p>
+                      <p className="text-xs text-amber-700 mt-0.5">Check your inbox for a verification link, or resend it below.</p>
+                    </div>
+                    <button
+                      onClick={handleResendEmailVerification}
+                      disabled={emailVerifyLoading}
+                      className="text-xs font-semibold text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {emailVerifyLoading ? "Sending…" : "Resend link"}
+                    </button>
+                  </div>
+                )}
+
                 {/* Nav tabs */}
                 <div className="flex bg-white border border-slate-200 rounded-xl p-1 mb-6 gap-1">
                   {navItems.map(({ key, label, icon: Icon }) => (

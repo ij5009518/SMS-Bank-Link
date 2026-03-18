@@ -1,11 +1,11 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable, accountsTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { usersTable, accountsTable, trustedDevicesTable } from "@workspace/db/schema";
+import { eq, and, gt } from "drizzle-orm";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { sendSms, normalizeE164 } from "../lib/signalwire.js";
-import { sendWelcomeEmail } from "../lib/email.js";
+import { sendWelcomeEmail, sendEmailVerificationEmail, sendDeviceVerificationEmail } from "../lib/email.js";
 
 const scryptAsync = promisify(scrypt);
 const router: IRouter = Router();
@@ -35,8 +35,19 @@ function generateVerificationCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return email;
+  const visible = local.length > 2 ? local.slice(0, 2) : local.slice(0, 1);
+  return `${visible}${"*".repeat(Math.max(local.length - 2, 2))}@${domain}`;
+}
+
 router.post("/login", async (req, res) => {
-  const { phoneNumber, password } = req.body as { phoneNumber?: string; password?: string };
+  const { phoneNumber, password, deviceToken } = req.body as {
+    phoneNumber?: string;
+    password?: string;
+    deviceToken?: string;
+  };
 
   if (!phoneNumber || !password) {
     return res.status(400).json({ error: "bad_request", message: "Phone number and password are required." });
@@ -59,10 +70,30 @@ router.post("/login", async (req, res) => {
     return res.status(401).json({ error: "invalid_credentials", message: "Incorrect password." });
   }
 
-  const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, user.id));
-  const accountsSafe = accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }));
+  // Check if device is trusted
+  if (deviceToken) {
+    const [trusted] = await db.select().from(trustedDevicesTable).where(
+      and(
+        eq(trustedDevicesTable.userId, user.id),
+        eq(trustedDevicesTable.token, deviceToken),
+        gt(trustedDevicesTable.expiresAt, new Date())
+      )
+    );
+    if (trusted) {
+      // Known device — log in immediately
+      const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, user.id));
+      return res.json({ ...safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))), deviceVerified: true });
+    }
+  }
 
-  res.json(safeUser(user, accountsSafe));
+  // Unknown device — require device verification before granting access
+  return res.status(403).json({
+    error: "device_unverified",
+    userId: user.id,
+    firstName: user.firstName,
+    email: user.email ? maskEmail(user.email) : null,
+    message: "New device detected. Please verify this device to continue.",
+  });
 });
 
 router.post("/signup", async (req, res) => {
@@ -87,6 +118,8 @@ router.post("/signup", async (req, res) => {
   const passwordHash = await hashPassword(password);
   const verificationCode = generateVerificationCode();
   const verificationExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  const emailVerificationToken = normalizedEmail ? randomBytes(32).toString("hex") : null;
+  const emailVerificationTokenExpiry = emailVerificationToken ? new Date(Date.now() + 72 * 60 * 60 * 1000) : null; // 72 hours
 
   try {
     const [user] = await db.insert(usersTable).values({
@@ -102,18 +135,21 @@ router.post("/signup", async (req, res) => {
       phoneVerified: false,
       phoneVerificationCode: verificationCode,
       phoneVerificationExpiry: verificationExpiry,
+      emailVerified: false,
+      emailVerificationToken,
+      emailVerificationTokenExpiry,
     }).returning();
 
-    // Send SMS verification code (fire-and-forget — don't block response)
+    // Send SMS verification code (fire-and-forget)
     const e164 = normalizeE164(normalizedPhone);
     if (e164) {
       sendSms(e164, `Your Text Banks verification code is: ${verificationCode}\n\nThis code expires in 10 minutes. Do not share it with anyone.`)
         .catch((err) => console.error("[Auth] Failed to send verification SMS:", err instanceof Error ? err.message : err));
     }
 
-    // Send welcome email (fire-and-forget)
-    if (normalizedEmail) {
-      sendWelcomeEmail(normalizedEmail, firstName, normalizedPhone)
+    // Send welcome email with embedded verification link (fire-and-forget)
+    if (normalizedEmail && emailVerificationToken) {
+      sendWelcomeEmail(normalizedEmail, firstName, normalizedPhone, emailVerificationToken)
         .catch((err) => console.error("[Auth] Failed to send welcome email:", err instanceof Error ? err.message : err));
     }
 
@@ -204,6 +240,139 @@ router.post("/resend-verification", async (req, res) => {
   }
 
   res.json({ success: true, message: "New code sent." });
+});
+
+// ── Email Verification ──
+
+router.post("/verify-email", async (req, res) => {
+  const { token } = req.body as { token?: string };
+  if (!token) return res.status(400).json({ error: "bad_request", message: "Token is required." });
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.emailVerificationToken, token));
+  if (!user) return res.status(404).json({ error: "invalid_token", message: "This verification link is invalid or has already been used." });
+
+  if (user.emailVerificationTokenExpiry && new Date() > new Date(user.emailVerificationTokenExpiry)) {
+    return res.status(400).json({ error: "token_expired", message: "This verification link has expired. Request a new one from your account settings." });
+  }
+
+  const [updated] = await db.update(usersTable)
+    .set({ emailVerified: true, emailVerificationToken: null, emailVerificationTokenExpiry: null })
+    .where(eq(usersTable.id, user.id))
+    .returning();
+
+  const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, user.id));
+  res.json({ success: true, user: safeUser(updated, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+});
+
+router.post("/resend-email-verification", async (req, res) => {
+  const { userId } = req.body as { userId?: number };
+  if (!userId) return res.status(400).json({ error: "bad_request", message: "User ID is required." });
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) return res.status(404).json({ error: "not_found", message: "User not found." });
+  if (!user.email) return res.status(400).json({ error: "no_email", message: "No email address on file." });
+  if (user.emailVerified) return res.json({ success: true, message: "Email is already verified." });
+
+  const newToken = randomBytes(32).toString("hex");
+  const expiry = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+  await db.update(usersTable)
+    .set({ emailVerificationToken: newToken, emailVerificationTokenExpiry: expiry })
+    .where(eq(usersTable.id, userId));
+
+  try {
+    await sendEmailVerificationEmail(user.email, user.firstName, newToken);
+  } catch {
+    return res.status(500).json({ error: "email_failed", message: "Could not send verification email. Please try again." });
+  }
+
+  res.json({ success: true, message: "Verification email sent." });
+});
+
+// ── Device Verification ──
+
+// Step 1 — send a code to the user's email to verify this device
+router.post("/send-device-code", async (req, res) => {
+  const { userId } = req.body as { userId?: number };
+  if (!userId) return res.status(400).json({ error: "bad_request", message: "User ID is required." });
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) return res.status(404).json({ error: "not_found", message: "User not found." });
+
+  const code = generateVerificationCode();
+  const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  await db.update(usersTable)
+    .set({ deviceVerificationCode: code, deviceVerificationExpiry: expiry })
+    .where(eq(usersTable.id, userId));
+
+  // Send via email if available, otherwise via SMS
+  let sent = false;
+  if (user.email) {
+    try {
+      await sendDeviceVerificationEmail(user.email, user.firstName, code);
+      sent = true;
+    } catch {
+      console.warn("[Auth] Could not send device code via email, falling back to SMS");
+    }
+  }
+  if (!sent) {
+    const e164 = normalizeE164(user.phoneNumber);
+    if (e164) {
+      try {
+        await sendSms(e164, `Text Banks security code: ${code}\n\nSomeone is signing in from a new device. If this was you, enter the code to continue. Expires in 10 minutes.`);
+        sent = true;
+      } catch {
+        return res.status(500).json({ error: "send_failed", message: "Could not send verification code. Please try again." });
+      }
+    }
+  }
+
+  res.json({
+    success: true,
+    via: user.email ? "email" : "sms",
+    destination: user.email ? maskEmail(user.email) : user.phoneNumber.slice(-4),
+  });
+});
+
+// Step 2 — verify the code and register this device as trusted
+router.post("/verify-device", async (req, res) => {
+  const { userId, code, deviceName } = req.body as { userId?: number; code?: string; deviceName?: string };
+  if (!userId || !code) return res.status(400).json({ error: "bad_request", message: "User ID and code are required." });
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) return res.status(404).json({ error: "not_found", message: "User not found." });
+
+  if (!user.deviceVerificationCode || !user.deviceVerificationExpiry) {
+    return res.status(400).json({ error: "no_code", message: "No verification code found. Please request a new one." });
+  }
+  if (new Date() > new Date(user.deviceVerificationExpiry)) {
+    return res.status(400).json({ error: "code_expired", message: "This code has expired. Please request a new one." });
+  }
+  if (user.deviceVerificationCode !== code.trim()) {
+    return res.status(400).json({ error: "invalid_code", message: "Incorrect code. Check your email or phone and try again." });
+  }
+
+  // Clear the code and create a trusted device record
+  await db.update(usersTable)
+    .set({ deviceVerificationCode: null, deviceVerificationExpiry: null })
+    .where(eq(usersTable.id, userId));
+
+  const deviceToken = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+  await db.insert(trustedDevicesTable).values({
+    userId,
+    token: deviceToken,
+    deviceName: deviceName || "Browser",
+    expiresAt,
+  });
+
+  // Return the full user so the frontend can log them in
+  const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, userId));
+  const safeU = safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) })));
+
+  res.json({ success: true, deviceToken, user: safeU });
 });
 
 // Re-verify current phone (works even if already verified — resets to unverified)
