@@ -187,6 +187,7 @@ export default function MyAccountPage() {
   const INACTIVITY_MS = 30 * 60 * 1000;
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showInactivityWarning, setShowInactivityWarning] = useState(false);
+  const warningActiveRef = useRef(false);
 
   // Profile dropdown
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -525,12 +526,15 @@ export default function MyAccountPage() {
 
   // ── Auto-logout on inactivity ──────────────────────────────────────────────
   const resetInactivityTimer = useCallback(() => {
+    // Don't reset while the warning dialog is showing — let the countdown run
+    if (warningActiveRef.current) return;
     if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-    setShowInactivityWarning(false);
     inactivityTimer.current = setTimeout(() => {
+      warningActiveRef.current = true;
       setShowInactivityWarning(true);
       // Give them 60 seconds to respond, then log out
       inactivityTimer.current = setTimeout(() => {
+        warningActiveRef.current = false;
         clearSession(); setSession(null); setShowInactivityWarning(false);
       }, 60_000);
     }, INACTIVITY_MS);
@@ -617,6 +621,7 @@ export default function MyAccountPage() {
   };
 
   const handleSignOut = () => {
+    warningActiveRef.current = false;
     clearSession(); setSession(null); setSignInPhone(""); setSignInPassword(""); setError(null);
     if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
     setShowInactivityWarning(false);
@@ -2626,7 +2631,7 @@ export default function MyAccountPage() {
                   </Button>
                   <Button
                     className="flex-1 bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm"
-                    onClick={() => { setShowInactivityWarning(false); resetInactivityTimer(); }}
+                    onClick={() => { warningActiveRef.current = false; setShowInactivityWarning(false); resetInactivityTimer(); }}
                   >
                     Keep Me Signed In
                   </Button>
