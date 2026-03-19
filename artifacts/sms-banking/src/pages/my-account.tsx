@@ -102,7 +102,7 @@ const statusConfig = (status: string) => {
   if (status === "active") return { label: "Active", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" };
   if (status === "bank_linked") return { label: "Bank Linked", cls: "bg-blue-50 text-blue-700 border-blue-200" };
   if (status === "opted_out") return { label: "Opted Out", cls: "bg-red-50 text-red-700 border-red-200" };
-  return { label: "Pending", cls: "bg-slate-100 text-slate-600 border-slate-200" };
+  return { label: "Pending", cls: "bg-[#F0ECE5] text-[#3C3C4A] border-[#E5E0D8]" };
 };
 
 type Section = "accounts" | "activity" | "spend" | "alerts" | "sms" | "settings";
@@ -886,7 +886,7 @@ export default function MyAccountPage() {
 
   return (
     <PublicLayout>
-      <div className="flex-1 bg-slate-50 min-h-screen">
+      <div className="flex-1 bg-[#F8F6F2] min-h-screen">
         <AnimatePresence mode="wait">
 
           {/* ── Auth Screen ── */}
@@ -896,16 +896,16 @@ export default function MyAccountPage() {
             >
               <div className="flex flex-col items-center mb-8">
                 <TextBanksLogo size={40} />
-                <h1 className="text-2xl font-display font-bold text-slate-900 mt-3 mb-1">Welcome back</h1>
-                <p className="text-sm text-slate-500">Sign in to manage your account</p>
+                <h1 className="text-2xl font-display font-bold text-[#0D0E12] mt-3 mb-1">Welcome back</h1>
+                <p className="text-sm text-[#7C7C8A]">Sign in to manage your account</p>
               </div>
 
-              <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="flex border-b border-slate-100">
+              <div className="w-full max-w-sm bg-white rounded-2xl border border-[#E5E0D8] shadow-sm overflow-hidden">
+                <div className="flex border-b border-[#EDE8E0]">
                   {(["signin", "signup"] as const).map((t) => (
                     <button key={t} onClick={() => { setTab(t); setError(null); }}
                       className={cn("flex-1 py-3.5 text-sm font-semibold transition-colors",
-                        tab === t ? "text-blue-700 border-b-2 border-blue-700 bg-blue-50/30" : "text-slate-500 hover:text-slate-700"
+                        tab === t ? "text-blue-700 border-b-2 border-blue-700 bg-blue-50/30" : "text-[#7C7C8A] hover:text-[#2C2C35]"
                       )}>
                       {t === "signin" ? "Sign In" : "Create Account"}
                     </button>
@@ -927,16 +927,16 @@ export default function MyAccountPage() {
                           </div>
                         </div>
                         {deviceEmailMasked ? (
-                          <p className="text-xs text-slate-500 leading-relaxed">
-                            A 6-digit code was sent to <strong className="text-slate-700">{deviceEmailMasked}</strong>. Enter it below to trust this device for 30 days.
+                          <p className="text-xs text-[#7C7C8A] leading-relaxed">
+                            A 6-digit code was sent to <strong className="text-[#2C2C35]">{deviceEmailMasked}</strong>. Enter it below to trust this device for 30 days.
                           </p>
                         ) : (
-                          <p className="text-xs text-slate-500 leading-relaxed">
+                          <p className="text-xs text-[#7C7C8A] leading-relaxed">
                             A 6-digit code was sent to your registered phone number. Enter it below to trust this device for 30 days.
                           </p>
                         )}
                         <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-slate-700">Verification Code</label>
+                          <label className="text-xs font-semibold text-[#2C2C35]">Verification Code</label>
                           <Input
                             value={deviceCode}
                             onChange={(e) => setDeviceCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
@@ -959,11 +959,11 @@ export default function MyAccountPage() {
                         >
                           {deviceLoading ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Verifying…</> : "Verify & Sign In"}
                         </Button>
-                        <div className="flex items-center justify-between text-xs text-slate-400">
+                        <div className="flex items-center justify-between text-xs text-[#9A9AA8]">
                           <button onClick={handleResendDeviceCode} disabled={deviceLoading} className="text-blue-600 hover:underline font-medium disabled:opacity-50">
                             Resend code
                           </button>
-                          <button onClick={() => { setDeviceStep("idle"); setDeviceCode(""); setDeviceError(null); }} className="text-slate-400 hover:text-slate-600">
+                          <button onClick={() => { setDeviceStep("idle"); setDeviceCode(""); setDeviceError(null); }} className="text-[#9A9AA8] hover:text-[#3C3C4A]">
                             Back to sign in
                           </button>
                         </div>
@@ -974,18 +974,18 @@ export default function MyAccountPage() {
                   {tab === "signin" && deviceStep === "idle" && googleStep === "needs_phone" && googleProfile && (
                     <motion.div key="google-phone" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}>
                       <div className="p-6 space-y-4">
-                        <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                        <div className="flex items-center gap-3 p-3 bg-[#F8F6F2] border border-[#E5E0D8] rounded-xl">
                           <div className="w-9 h-9 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center font-bold text-sm text-blue-700">
                             {googleProfile.firstName?.[0] || googleProfile.email[0].toUpperCase()}
                           </div>
                           <div>
-                            <p className="text-sm font-semibold text-slate-900">{googleProfile.firstName} {googleProfile.lastName}</p>
-                            <p className="text-xs text-slate-500">{googleProfile.email}</p>
+                            <p className="text-sm font-semibold text-[#0D0E12]">{googleProfile.firstName} {googleProfile.lastName}</p>
+                            <p className="text-xs text-[#7C7C8A]">{googleProfile.email}</p>
                           </div>
                         </div>
-                        <p className="text-xs text-slate-600">One more step — we need your mobile number so you can text banking commands.</p>
+                        <p className="text-xs text-[#3C3C4A]">One more step — we need your mobile number so you can text banking commands.</p>
                         <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-slate-700">Mobile Number</label>
+                          <label className="text-xs font-semibold text-[#2C2C35]">Mobile Number</label>
                           <PhoneInput
                             value={googlePhone}
                             onChange={(v) => { setGooglePhone(v); setGoogleError(null); }}
@@ -998,7 +998,7 @@ export default function MyAccountPage() {
                           disabled={googleLoading || googlePhone.replace(/\D/g, "").length < 10}>
                           {googleLoading ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Creating account…</> : "Complete Sign-Up"}
                         </Button>
-                        <button className="w-full text-center text-xs text-slate-400 hover:text-slate-600" onClick={() => { setGoogleStep("idle"); setGoogleProfile(null); setGoogleError(null); }}>
+                        <button className="w-full text-center text-xs text-[#9A9AA8] hover:text-[#3C3C4A]" onClick={() => { setGoogleStep("idle"); setGoogleProfile(null); setGoogleError(null); }}>
                           Use a different account
                         </button>
                       </div>
@@ -1019,13 +1019,13 @@ export default function MyAccountPage() {
                             <div ref={googleBtnRef} className="flex justify-center" />
                             <div className="flex items-center gap-3">
                               <div className="flex-1 h-px bg-slate-200" />
-                              <span className="text-xs text-slate-400 font-medium">or sign in with phone</span>
+                              <span className="text-xs text-[#9A9AA8] font-medium">or sign in with phone</span>
                               <div className="flex-1 h-px bg-slate-200" />
                             </div>
                           </div>
                         )}
                         <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-slate-700">Mobile Number</label>
+                          <label className="text-xs font-semibold text-[#2C2C35]">Mobile Number</label>
                           <PhoneInput
                             value={signInPhone}
                             onChange={(v) => { setSignInPhone(v); setError(null); }}
@@ -1034,14 +1034,14 @@ export default function MyAccountPage() {
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-slate-700">Password</label>
+                          <label className="text-xs font-semibold text-[#2C2C35]">Password</label>
                           <div className="relative">
-                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9A9AA8]" />
                             <Input type={showPassword ? "text" : "password"} placeholder="••••••" value={signInPassword}
                               onChange={(e) => { setSignInPassword(e.target.value); setError(null); }}
                               onKeyDown={(e) => e.key === "Enter" && handleSignIn()}
-                              className="pl-9 pr-10 h-10 border-slate-200 rounded-xl text-sm" />
-                            <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                              className="pl-9 pr-10 h-10 border-[#E5E0D8] rounded-xl text-sm" />
+                            <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9A9AA8] hover:text-[#3C3C4A]"
                               onClick={() => setShowPassword((v) => !v)}>
                               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </button>
@@ -1060,11 +1060,11 @@ export default function MyAccountPage() {
                             Forgot password?
                           </button>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-50 rounded-lg p-3">
+                        <div className="flex items-center gap-2 text-xs text-[#9A9AA8] bg-[#F8F6F2] rounded-lg p-3">
                           <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-500" />
                           Your information is kept private and secure.
                         </div>
-                        <p className="text-xs text-center text-slate-400">
+                        <p className="text-xs text-center text-[#9A9AA8]">
                           No account?{" "}<Link href="/register" className="text-blue-600 font-medium hover:underline">Sign up free</Link>
                         </p>
                       </div>
@@ -1076,26 +1076,26 @@ export default function MyAccountPage() {
                       <div className="p-6 space-y-4">
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-700">First Name</label>
+                            <label className="text-xs font-semibold text-[#2C2C35]">First Name</label>
                             <div className="relative">
-                              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                              <Input placeholder="Jane" value={signUpFirst} onChange={(e) => { setSignUpFirst(e.target.value); setError(null); }} className="pl-9 h-10 border-slate-200 rounded-xl text-sm" />
+                              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9A9AA8]" />
+                              <Input placeholder="Jane" value={signUpFirst} onChange={(e) => { setSignUpFirst(e.target.value); setError(null); }} className="pl-9 h-10 border-[#E5E0D8] rounded-xl text-sm" />
                             </div>
                           </div>
                           <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-700">Last Name</label>
-                            <Input placeholder="Doe" value={signUpLast} onChange={(e) => { setSignUpLast(e.target.value); setError(null); }} className="h-10 border-slate-200 rounded-xl text-sm" />
+                            <label className="text-xs font-semibold text-[#2C2C35]">Last Name</label>
+                            <Input placeholder="Doe" value={signUpLast} onChange={(e) => { setSignUpLast(e.target.value); setError(null); }} className="h-10 border-[#E5E0D8] rounded-xl text-sm" />
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-slate-700">Email Address <span className="text-slate-400 font-normal">(optional)</span></label>
+                          <label className="text-xs font-semibold text-[#2C2C35]">Email Address <span className="text-[#9A9AA8] font-normal">(optional)</span></label>
                           <div className="relative">
-                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <Input type="email" placeholder="jane@example.com" value={signUpEmail} onChange={(e) => { setSignUpEmail(e.target.value); setError(null); }} className="pl-9 h-10 border-slate-200 rounded-xl text-sm" />
+                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9A9AA8]" />
+                            <Input type="email" placeholder="jane@example.com" value={signUpEmail} onChange={(e) => { setSignUpEmail(e.target.value); setError(null); }} className="pl-9 h-10 border-[#E5E0D8] rounded-xl text-sm" />
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-slate-700">Mobile Number</label>
+                          <label className="text-xs font-semibold text-[#2C2C35]">Mobile Number</label>
                           <PhoneInput
                             value={signUpPhone}
                             onChange={(v) => { setSignUpPhone(v); setError(null); }}
@@ -1104,23 +1104,23 @@ export default function MyAccountPage() {
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-700">Password</label>
+                            <label className="text-xs font-semibold text-[#2C2C35]">Password</label>
                             <div className="relative">
-                              <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                              <Input type={showPassword ? "text" : "password"} placeholder="••••••" value={signUpPassword} onChange={(e) => { setSignUpPassword(e.target.value); setError(null); }} className="pl-9 pr-9 h-10 border-slate-200 rounded-xl text-sm" />
-                              <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" onClick={() => setShowPassword((v) => !v)}>
+                              <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9A9AA8]" />
+                              <Input type={showPassword ? "text" : "password"} placeholder="••••••" value={signUpPassword} onChange={(e) => { setSignUpPassword(e.target.value); setError(null); }} className="pl-9 pr-9 h-10 border-[#E5E0D8] rounded-xl text-sm" />
+                              <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9A9AA8] hover:text-[#3C3C4A]" onClick={() => setShowPassword((v) => !v)}>
                                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                               </button>
                             </div>
                           </div>
                           <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-700">Confirm</label>
-                            <Input type={showPassword ? "text" : "password"} placeholder="••••••" value={signUpConfirm} onChange={(e) => { setSignUpConfirm(e.target.value); setError(null); }} className="h-10 border-slate-200 rounded-xl text-sm" />
+                            <label className="text-xs font-semibold text-[#2C2C35]">Confirm</label>
+                            <Input type={showPassword ? "text" : "password"} placeholder="••••••" value={signUpConfirm} onChange={(e) => { setSignUpConfirm(e.target.value); setError(null); }} className="h-10 border-[#E5E0D8] rounded-xl text-sm" />
                           </div>
                         </div>
-                        <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex items-start gap-3 rounded-xl border border-[#E5E0D8] bg-[#F8F6F2] p-3">
                           <Checkbox id="consent" checked={signUpConsent} onCheckedChange={(v) => { setSignUpConsent(!!v); setError(null); }} className="mt-0.5" />
-                          <label htmlFor="consent" className="text-xs text-slate-500 leading-relaxed cursor-pointer">
+                          <label htmlFor="consent" className="text-xs text-[#7C7C8A] leading-relaxed cursor-pointer">
                             I agree to receive SMS messages from Text Banks. Reply STOP to cancel.
                           </label>
                         </div>
@@ -1128,10 +1128,10 @@ export default function MyAccountPage() {
                         <Button className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm" onClick={handleSignUp} disabled={isLoading}>
                           {isLoading ? "Creating account…" : "Create Account"}
                         </Button>
-                        <p className="text-xs text-center text-slate-400">
+                        <p className="text-xs text-center text-[#9A9AA8]">
                           Want to link a bank?{" "}<Link href="/register" className="text-blue-600 hover:underline font-medium">Full sign-up</Link>
                         </p>
-                        <p className="text-xs text-center text-slate-400">
+                        <p className="text-xs text-center text-[#9A9AA8]">
                           Already have an account?{" "}<button className="text-blue-600 font-medium hover:underline" onClick={() => { setTab("signin"); setError(null); }}>Sign in</button>
                         </p>
                       </div>
@@ -1156,8 +1156,8 @@ export default function MyAccountPage() {
                       <div>
                         <h1 className="text-lg font-bold text-white">{session.firstName} {session.lastName}</h1>
                         <div className="flex items-center gap-2">
-                          <Phone className="w-3.5 h-3.5 text-slate-400" />
-                          <span className="text-sm text-slate-400">{session.phoneNumber}</span>
+                          <Phone className="w-3.5 h-3.5 text-[#9A9AA8]" />
+                          <span className="text-sm text-[#9A9AA8]">{session.phoneNumber}</span>
                           <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full border", statusConfig(session.onboardingStatus).cls)}>
                             {statusConfig(session.onboardingStatus).label}
                           </span>
@@ -1181,27 +1181,27 @@ export default function MyAccountPage() {
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: -6, scale: 0.97 }}
                             transition={{ duration: 0.12 }}
-                            className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50"
+                            className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-xl border border-[#E5E0D8] overflow-hidden z-50"
                           >
-                            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
-                              <p className="text-sm font-bold text-slate-900">{session.firstName} {session.lastName}</p>
-                              <p className="text-xs text-slate-500">{session.phoneNumber}</p>
+                            <div className="px-4 py-3 border-b border-[#EDE8E0] bg-[#F8F6F2]">
+                              <p className="text-sm font-bold text-[#0D0E12]">{session.firstName} {session.lastName}</p>
+                              <p className="text-xs text-[#7C7C8A]">{session.phoneNumber}</p>
                             </div>
                             <div className="py-1">
                               <button
-                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#2C2C35] hover:bg-[#F8F6F2] transition-colors"
                                 onClick={() => { setActiveSection("settings"); setShowProfileMenu(false); }}
                               >
-                                <Settings className="w-4 h-4 text-slate-400" /> Settings
+                                <Settings className="w-4 h-4 text-[#9A9AA8]" /> Settings
                               </button>
                               <button
-                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#2C2C35] hover:bg-[#F8F6F2] transition-colors"
                                 onClick={() => { setShowReportBug(true); setShowProfileMenu(false); }}
                               >
-                                <Bug className="w-4 h-4 text-slate-400" /> Report a bug
+                                <Bug className="w-4 h-4 text-[#9A9AA8]" /> Report a bug
                               </button>
                             </div>
-                            <div className="border-t border-slate-100 py-1">
+                            <div className="border-t border-[#EDE8E0] py-1">
                               <button
                                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
                                 onClick={handleSignOut}
@@ -1218,17 +1218,17 @@ export default function MyAccountPage() {
                   {/* Quick stats */}
                   <div className="grid grid-cols-3 gap-4 mt-6">
                     <div className="bg-slate-800/60 rounded-xl p-4 border border-slate-700/50">
-                      <p className="text-xs text-slate-400 mb-1">Linked Accounts</p>
+                      <p className="text-xs text-[#9A9AA8] mb-1">Linked Accounts</p>
                       <p className="text-2xl font-bold text-white">{userAccounts.length}</p>
                     </div>
                     <div className="bg-slate-800/60 rounded-xl p-4 border border-slate-700/50">
-                      <p className="text-xs text-slate-400 mb-1">SMS Messages</p>
+                      <p className="text-xs text-[#9A9AA8] mb-1">SMS Messages</p>
                       <p className="text-2xl font-bold text-white">
                         {Array.isArray(smsLogs) ? smsLogs.filter((l: { direction: string }) => l.direction === "inbound").length : 0}
                       </p>
                     </div>
                     <div className="bg-slate-800/60 rounded-xl p-4 border border-slate-700/50">
-                      <p className="text-xs text-slate-400 mb-1">SMS Status</p>
+                      <p className="text-xs text-[#9A9AA8] mb-1">SMS Status</p>
                       <p className="text-sm font-semibold flex items-center gap-1.5 mt-1">
                         {session.optedOut
                           ? <><span className="w-2 h-2 rounded-full bg-red-400 inline-block" /><span className="text-red-300">Opted Out</span></>
@@ -1298,23 +1298,23 @@ export default function MyAccountPage() {
                     <div className="bg-white border border-blue-100 rounded-xl p-5 mb-5 shadow-sm">
                       <div className="flex items-center justify-between mb-3">
                         <div>
-                          <p className="text-sm font-bold text-slate-900">Setup progress</p>
-                          <p className="text-xs text-slate-500">{doneCount} of {steps.length} steps complete</p>
+                          <p className="text-sm font-bold text-[#0D0E12]">Setup progress</p>
+                          <p className="text-xs text-[#7C7C8A]">{doneCount} of {steps.length} steps complete</p>
                         </div>
                         <span className="text-sm font-bold text-blue-700">{pct}%</span>
                       </div>
-                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden mb-4">
+                      <div className="h-2 bg-[#F0ECE5] rounded-full overflow-hidden mb-4">
                         <div className="h-full bg-gradient-to-r from-blue-500 to-blue-700 rounded-full transition-all" style={{ width: `${pct}%` }} />
                       </div>
                       <div className="grid grid-cols-4 gap-2">
                         {steps.map((step, i) => (
                           <div key={i} className="flex flex-col items-center gap-1.5 text-center">
                             <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors",
-                              step.done ? "bg-blue-600 border-blue-600 text-white" : "bg-white border-slate-200 text-slate-400"
+                              step.done ? "bg-blue-600 border-blue-600 text-white" : "bg-white border-[#E5E0D8] text-[#9A9AA8]"
                             )}>
                               {step.done ? <Check className="w-3.5 h-3.5" /> : <span>{i + 1}</span>}
                             </div>
-                            <span className={cn("text-xs leading-tight", step.done ? "text-slate-700 font-medium" : "text-slate-400")}>{step.label}</span>
+                            <span className={cn("text-xs leading-tight", step.done ? "text-[#2C2C35] font-medium" : "text-[#9A9AA8]")}>{step.label}</span>
                           </div>
                         ))}
                       </div>
@@ -1339,24 +1339,24 @@ export default function MyAccountPage() {
                         <p className="text-2xl font-bold tracking-tight">{fmt(totalBalance)}</p>
                         <p className="text-xs text-blue-300 mt-1">{depositAccounts.length} account{depositAccounts.length !== 1 ? "s" : ""}</p>
                       </div>
-                      <div className="bg-white border border-slate-200 rounded-2xl p-5">
+                      <div className="bg-white border border-[#E5E0D8] rounded-2xl p-5">
                         <div className="flex items-center gap-2 mb-2">
                           <TrendingDown className="w-4 h-4 text-red-400" />
-                          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Credit Debt</span>
+                          <span className="text-xs font-semibold text-[#7C7C8A] uppercase tracking-wide">Credit Debt</span>
                         </div>
                         <p className={cn("text-2xl font-bold tracking-tight", totalDebt > 0 ? "text-red-600" : "text-emerald-600")}>{fmt(totalDebt)}</p>
-                        <p className="text-xs text-slate-400 mt-1">{creditAccounts.length} card{creditAccounts.length !== 1 ? "s" : ""}</p>
+                        <p className="text-xs text-[#9A9AA8] mt-1">{creditAccounts.length} card{creditAccounts.length !== 1 ? "s" : ""}</p>
                       </div>
                     </div>
                   );
                 })()}
 
                 {/* Nav tabs */}
-                <div className="flex bg-white border border-slate-200 rounded-xl p-1 mb-6 gap-1 overflow-x-auto no-scrollbar">
+                <div className="flex bg-white border border-[#E5E0D8] rounded-xl p-1 mb-6 gap-1 overflow-x-auto no-scrollbar">
                   {navItems.map(({ key, label, icon: Icon }) => (
                     <button key={key} onClick={() => setActiveSection(key)}
                       className={cn("flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-semibold transition-all",
-                        activeSection === key ? "bg-blue-700 text-white shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                        activeSection === key ? "bg-blue-700 text-white shadow-sm" : "text-[#7C7C8A] hover:text-[#2C2C35] hover:bg-[#F8F6F2]"
                       )}>
                       <Icon className="w-4 h-4" />
                       <span className="hidden sm:inline">{label}</span>
@@ -1384,12 +1384,12 @@ export default function MyAccountPage() {
                       )}
 
                       {userAccounts.length === 0 ? (
-                        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
-                          <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                            <CreditCard className="w-7 h-7 text-slate-400" />
+                        <div className="bg-white border border-[#E5E0D8] rounded-2xl p-12 text-center">
+                          <div className="w-14 h-14 bg-[#F0ECE5] rounded-2xl flex items-center justify-center mx-auto mb-4">
+                            <CreditCard className="w-7 h-7 text-[#9A9AA8]" />
                           </div>
-                          <h3 className="font-bold text-slate-900 mb-1">No bank accounts linked</h3>
-                          <p className="text-sm text-slate-500 mb-5">Link a bank to start checking your balance by text.</p>
+                          <h3 className="font-bold text-[#0D0E12] mb-1">No bank accounts linked</h3>
+                          <p className="text-sm text-[#7C7C8A] mb-5">Link a bank to start checking your balance by text.</p>
                           <div className="flex flex-col items-center gap-3">
                             <Button
                               onClick={openTellerConnect}
@@ -1401,7 +1401,7 @@ export default function MyAccountPage() {
                             <button
                               onClick={handleSyncAccounts}
                               disabled={isSyncing}
-                              className="text-sm text-slate-500 hover:text-slate-700 hover:underline flex items-center gap-1.5"
+                              className="text-sm text-[#7C7C8A] hover:text-[#2C2C35] hover:underline flex items-center gap-1.5"
                             >
                               <RefreshCw className={cn("w-3.5 h-3.5", isSyncing && "animate-spin")} />
                               {isSyncing ? "Syncing…" : "Already linked? Retry sync"}
@@ -1411,25 +1411,25 @@ export default function MyAccountPage() {
                       ) : (
                         <>
                           {userAccounts.map((acct) => (
-                            <div key={acct.id} className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center justify-between hover:border-blue-200 hover:shadow-sm transition-all">
+                            <div key={acct.id} className="bg-white border border-[#E5E0D8] rounded-2xl p-5 flex items-center justify-between hover:border-blue-200 hover:shadow-sm transition-all">
                               <div className="flex items-center gap-4">
                                 <div className="w-11 h-11 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-center shrink-0">
                                   <Building2 className="w-5 h-5 text-blue-700" />
                                 </div>
                                 <div>
-                                  <p className="font-semibold text-slate-900 text-sm">
-                                    {acct.bankName}<span className="text-slate-400 font-normal ml-1.5">••••{acct.accountLastFour}</span>
+                                  <p className="font-semibold text-[#0D0E12] text-sm">
+                                    {acct.bankName}<span className="text-[#9A9AA8] font-normal ml-1.5">••••{acct.accountLastFour}</span>
                                   </p>
                                   <div className="flex items-center gap-2 mt-0.5">
-                                    <span className="text-xs text-slate-500 capitalize">{acct.accountType}</span>
+                                    <span className="text-xs text-[#7C7C8A] capitalize">{acct.accountType}</span>
                                     <span className="text-slate-300">·</span>
                                     <code className="text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded font-mono">BAL {acct.nickname}</code>
                                   </div>
                                 </div>
                               </div>
                               <div className="text-right">
-                                <p className="font-bold text-slate-900 text-base">${Number(acct.currentBalance).toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
-                                <p className="text-xs text-slate-400">available</p>
+                                <p className="font-bold text-[#0D0E12] text-base">${Number(acct.currentBalance).toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+                                <p className="text-xs text-[#9A9AA8]">available</p>
                               </div>
                             </div>
                           ))}
@@ -1448,7 +1448,7 @@ export default function MyAccountPage() {
                             <button
                               onClick={handleSyncAccounts}
                               disabled={isSyncing}
-                              className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1.5"
+                              className="text-sm text-[#7C7C8A] hover:text-[#2C2C35] flex items-center gap-1.5"
                             >
                               <RefreshCw className={cn("w-3.5 h-3.5", isSyncing && "animate-spin")} />
                               {isSyncing ? "Syncing…" : "Sync balances"}
@@ -1462,11 +1462,11 @@ export default function MyAccountPage() {
                   {/* ── Transactions ── */}
                   {activeSection === "activity" && (
                     <motion.div key="activity" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                      <div className="bg-white border border-[#E5E0D8] rounded-2xl overflow-hidden">
+                        <div className="px-5 py-4 border-b border-[#EDE8E0] flex items-center justify-between">
                           <div>
-                            <h3 className="font-bold text-slate-900 text-sm">Recent Transactions</h3>
-                            <p className="text-xs text-slate-400 mt-0.5">
+                            <h3 className="font-bold text-[#0D0E12] text-sm">Recent Transactions</h3>
+                            <p className="text-xs text-[#9A9AA8] mt-0.5">
                               {txnSyncMessage
                                 ? <span className="text-emerald-600 font-medium">{txnSyncMessage}</span>
                                 : "Synced from your linked bank accounts"}
@@ -1475,14 +1475,14 @@ export default function MyAccountPage() {
                           <button
                             onClick={handleSyncTransactions}
                             disabled={isSyncingTxns}
-                            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 font-medium px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 transition-all disabled:opacity-50"
+                            className="flex items-center gap-1.5 text-xs text-[#7C7C8A] hover:text-[#2C2C35] font-medium px-3 py-1.5 rounded-lg border border-[#E5E0D8] hover:border-slate-300 transition-all disabled:opacity-50"
                           >
                             <RefreshCw className={cn("w-3.5 h-3.5", isSyncingTxns && "animate-spin")} />
                             {isSyncingTxns ? "Syncing…" : "Refresh"}
                           </button>
                         </div>
                         {!transactions || (transactions as unknown[]).length === 0 ? (
-                          <div className="py-12 text-center text-slate-400 text-sm">
+                          <div className="py-12 text-center text-[#9A9AA8] text-sm">
                             <CreditCard className="w-8 h-8 mx-auto mb-3 opacity-30" />
                             <p className="mb-3">{isSyncingTxns ? "Loading transactions…" : "No transactions on record yet."}</p>
                             {!isSyncingTxns && userAccounts.length > 0 && (
@@ -1497,19 +1497,19 @@ export default function MyAccountPage() {
                               .slice(0, 25).map((txn) => {
                                 const isCredit = txn.type === "credit";
                                 return (
-                                  <div key={txn.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors">
+                                  <div key={txn.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-[#F8F6F2] transition-colors">
                                     <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", isCredit ? "bg-emerald-50" : "bg-red-50")}>
                                       {isCredit ? <ArrowDownLeft className="w-4 h-4 text-emerald-600" /> : <ArrowUpRight className="w-4 h-4 text-red-500" />}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                      <p className="font-medium text-slate-900 text-sm truncate">{txn.merchantName}</p>
-                                      <p className="text-xs text-slate-400 capitalize">{txn.category}</p>
+                                      <p className="font-medium text-[#0D0E12] text-sm truncate">{txn.merchantName}</p>
+                                      <p className="text-xs text-[#9A9AA8] capitalize">{txn.category}</p>
                                     </div>
                                     <div className="text-right shrink-0">
-                                      <p className={cn("font-semibold text-sm", isCredit ? "text-emerald-600" : "text-slate-900")}>
+                                      <p className={cn("font-semibold text-sm", isCredit ? "text-emerald-600" : "text-[#0D0E12]")}>
                                         {isCredit ? "+" : "-"}${Math.abs(Number(txn.amount)).toFixed(2)}
                                       </p>
-                                      <p className="text-xs text-slate-400">
+                                      <p className="text-xs text-[#9A9AA8]">
                                         {new Date(txn.transactionDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                                       </p>
                                     </div>
@@ -1527,11 +1527,11 @@ export default function MyAccountPage() {
                     <motion.div key="spend" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
 
                       {/* Period toggle */}
-                      <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1">
+                      <div className="flex bg-white border border-[#E5E0D8] rounded-xl p-1 gap-1">
                         {([["today", "Today"], ["month", "This Month"]] as const).map(([v, l]) => (
                           <button key={v} onClick={() => setSpendPeriod(v)}
                             className={cn("flex-1 py-2 rounded-lg text-sm font-semibold transition-all",
-                              spendPeriod === v ? "bg-blue-700 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"
+                              spendPeriod === v ? "bg-blue-700 text-white shadow-sm" : "text-[#7C7C8A] hover:text-[#2C2C35]"
                             )}>
                             {l}
                           </button>
@@ -1553,10 +1553,10 @@ export default function MyAccountPage() {
 
                         if (filtered.length === 0) {
                           return (
-                            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
+                            <div className="bg-white border border-[#E5E0D8] rounded-2xl p-12 text-center">
                               <BarChart3 className="w-10 h-10 mx-auto mb-3 text-slate-300" />
-                              <p className="font-semibold text-slate-700 mb-1">No spending {spendPeriod === "today" ? "today" : "this month"}</p>
-                              <p className="text-xs text-slate-400">Transactions will appear here as they sync from your bank.</p>
+                              <p className="font-semibold text-[#2C2C35] mb-1">No spending {spendPeriod === "today" ? "today" : "this month"}</p>
+                              <p className="text-xs text-[#9A9AA8]">Transactions will appear here as they sync from your bank.</p>
                             </div>
                           );
                         }
@@ -1585,14 +1585,14 @@ export default function MyAccountPage() {
                         };
 
                         return (
-                          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                          <div className="bg-white border border-[#E5E0D8] rounded-2xl overflow-hidden">
+                            <div className="px-5 py-4 border-b border-[#EDE8E0] flex items-center justify-between">
                               <div>
-                                <h3 className="font-bold text-slate-900 text-sm">
+                                <h3 className="font-bold text-[#0D0E12] text-sm">
                                   Spending {spendPeriod === "today" ? "Today" : "This Month"}
                                 </h3>
-                                <p className="text-xs text-slate-400 mt-0.5">
-                                  Total: <span className="font-semibold text-slate-700">${total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                <p className="text-xs text-[#9A9AA8] mt-0.5">
+                                  Total: <span className="font-semibold text-[#2C2C35]">${total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
                                   {" "}· {filtered.length} transaction{filtered.length !== 1 ? "s" : ""}
                                 </p>
                               </div>
@@ -1609,14 +1609,14 @@ export default function MyAccountPage() {
                                     <div className="flex items-center justify-between mb-1.5">
                                       <div className="flex items-center gap-2.5">
                                         <div className="w-3 h-3 rounded-full shrink-0" style={{ background: color }} />
-                                        <span className="text-sm font-medium text-slate-700 capitalize">{cat}</span>
+                                        <span className="text-sm font-medium text-[#2C2C35] capitalize">{cat}</span>
                                       </div>
                                       <div className="flex items-center gap-3">
-                                        <span className="text-xs text-slate-400">{pct}%</span>
-                                        <span className="text-sm font-bold text-slate-900">${amt.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                        <span className="text-xs text-[#9A9AA8]">{pct}%</span>
+                                        <span className="text-sm font-bold text-[#0D0E12]">${amt.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
                                       </div>
                                     </div>
-                                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className="h-1.5 bg-[#F0ECE5] rounded-full overflow-hidden">
                                       <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: color }} />
                                     </div>
                                   </div>
@@ -1628,15 +1628,15 @@ export default function MyAccountPage() {
                       })()}
 
                       {/* Categories Management */}
-                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                      <div className="bg-white border border-[#E5E0D8] rounded-2xl overflow-hidden">
+                        <div className="px-5 py-4 border-b border-[#EDE8E0] flex items-center justify-between">
                           <div>
-                            <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                              <Tag className="w-4 h-4 text-slate-500" /> Spending Categories
+                            <h3 className="font-bold text-[#0D0E12] text-sm flex items-center gap-2">
+                              <Tag className="w-4 h-4 text-[#7C7C8A]" /> Spending Categories
                             </h3>
-                            <p className="text-xs text-slate-400 mt-0.5">Customize how transactions are grouped</p>
+                            <p className="text-xs text-[#9A9AA8] mt-0.5">Customize how transactions are grouped</p>
                           </div>
-                          {catLoading && <RefreshCw className="w-4 h-4 text-slate-400 animate-spin" />}
+                          {catLoading && <RefreshCw className="w-4 h-4 text-[#9A9AA8] animate-spin" />}
                         </div>
 
                         {/* Category list */}
@@ -1649,10 +1649,10 @@ export default function MyAccountPage() {
                                     <input type="color" value={editCatColor} onChange={(e) => setEditCatColor(e.target.value)}
                                       className="w-8 h-8 rounded-lg border-0 cursor-pointer p-0.5 bg-transparent" />
                                     <Input value={editCatName} onChange={(e) => setEditCatName(e.target.value)}
-                                      placeholder="Category name" className="h-9 border-slate-200 rounded-lg text-sm flex-1" />
+                                      placeholder="Category name" className="h-9 border-[#E5E0D8] rounded-lg text-sm flex-1" />
                                   </div>
                                   <Input value={editCatKeywords} onChange={(e) => setEditCatKeywords(e.target.value)}
-                                    placeholder="Keywords (comma-separated): coffee, starbucks, cafe" className="h-9 border-slate-200 rounded-lg text-sm" />
+                                    placeholder="Keywords (comma-separated): coffee, starbucks, cafe" className="h-9 border-[#E5E0D8] rounded-lg text-sm" />
                                   <div className="flex gap-2">
                                     <Button size="sm" disabled={catSaving || !editCatName.trim()}
                                       className="bg-blue-700 hover:bg-blue-800 text-white rounded-lg h-8 text-xs px-3"
@@ -1669,26 +1669,26 @@ export default function MyAccountPage() {
                                       }}>
                                       <Save className="w-3 h-3 mr-1" />{catSaving ? "Saving…" : "Save"}
                                     </Button>
-                                    <Button size="sm" variant="ghost" className="h-8 text-xs px-3 rounded-lg text-slate-500" onClick={() => setEditingCat(null)}>Cancel</Button>
+                                    <Button size="sm" variant="ghost" className="h-8 text-xs px-3 rounded-lg text-[#7C7C8A]" onClick={() => setEditingCat(null)}>Cancel</Button>
                                   </div>
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-3">
                                   <div className="w-3 h-3 rounded-full shrink-0" style={{ background: cat.color || "#94a3b8" }} />
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-slate-800">{cat.name}</p>
+                                    <p className="text-sm font-medium text-[#1A1A24]">{cat.name}</p>
                                     {cat.keywords.length > 0 && (
-                                      <p className="text-xs text-slate-400 mt-0.5 truncate">{cat.keywords.join(", ")}</p>
+                                      <p className="text-xs text-[#9A9AA8] mt-0.5 truncate">{cat.keywords.join(", ")}</p>
                                     )}
                                   </div>
                                   <div className="flex items-center gap-1 shrink-0">
-                                    {cat.isSystem && <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">built-in</span>}
-                                    <button className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"
+                                    {cat.isSystem && <span className="text-[10px] text-[#9A9AA8] bg-[#F0ECE5] px-1.5 py-0.5 rounded">built-in</span>}
+                                    <button className="p-1.5 hover:bg-[#F0ECE5] rounded-lg text-[#9A9AA8] hover:text-blue-600 transition-colors"
                                       onClick={() => { setEditingCat(cat.id); setEditCatName(cat.name); setEditCatColor(cat.color || "#94a3b8"); setEditCatKeywords(cat.keywords.join(", ")); }}>
                                       <Pencil className="w-3.5 h-3.5" />
                                     </button>
                                     {!cat.isSystem && (
-                                      <button className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
+                                      <button className="p-1.5 hover:bg-red-50 rounded-lg text-[#9A9AA8] hover:text-red-500 transition-colors"
                                         onClick={async () => {
                                           if (!session || !confirm(`Delete "${cat.name}"?`)) return;
                                           await fetch(`/api/users/${session.id}/categories/${cat.id}`, { method: "DELETE" });
@@ -1705,16 +1705,16 @@ export default function MyAccountPage() {
                         </div>
 
                         {/* Add new category */}
-                        <div className="px-5 py-4 border-t border-slate-100 bg-slate-50 space-y-2.5">
-                          <p className="text-xs font-semibold text-slate-600">Add Custom Category</p>
+                        <div className="px-5 py-4 border-t border-[#EDE8E0] bg-[#F8F6F2] space-y-2.5">
+                          <p className="text-xs font-semibold text-[#3C3C4A]">Add Custom Category</p>
                           <div className="flex items-center gap-2">
                             <input type="color" value={newCatColor} onChange={(e) => setNewCatColor(e.target.value)}
                               className="w-8 h-8 rounded-lg border-0 cursor-pointer p-0.5 bg-transparent" />
                             <Input value={newCatName} onChange={(e) => setNewCatName(e.target.value)}
-                              placeholder="Category name (e.g. Subscriptions)" className="h-9 border-slate-200 rounded-lg text-sm flex-1" />
+                              placeholder="Category name (e.g. Subscriptions)" className="h-9 border-[#E5E0D8] rounded-lg text-sm flex-1" />
                           </div>
                           <Input value={newCatKeywords} onChange={(e) => setNewCatKeywords(e.target.value)}
-                            placeholder="Keywords: netflix, spotify, hulu" className="h-9 border-slate-200 rounded-lg text-sm" />
+                            placeholder="Keywords: netflix, spotify, hulu" className="h-9 border-[#E5E0D8] rounded-lg text-sm" />
                           <Button size="sm" disabled={catSaving || !newCatName.trim()}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg h-8 text-xs px-4"
                             onClick={async () => {
@@ -1748,10 +1748,10 @@ export default function MyAccountPage() {
                       </div>
 
                       {alertRows.length === 0 ? (
-                        <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center">
+                        <div className="bg-white border border-[#E5E0D8] rounded-2xl p-10 text-center">
                           <Bell className="w-10 h-10 mx-auto mb-3 text-slate-300" />
-                          <p className="font-semibold text-slate-700 mb-2">No alerts configured</p>
-                          <p className="text-xs text-slate-400 mb-4">Click the button below to set up your first alert.</p>
+                          <p className="font-semibold text-[#2C2C35] mb-2">No alerts configured</p>
+                          <p className="text-xs text-[#9A9AA8] mb-4">Click the button below to set up your first alert.</p>
                           <Button
                             className="bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm px-5"
                             onClick={async () => {
@@ -1775,7 +1775,7 @@ export default function MyAccountPage() {
                           </Button>
                         </div>
                       ) : (
-                        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100">
+                        <div className="bg-white border border-[#E5E0D8] rounded-2xl overflow-hidden divide-y divide-slate-100">
                           {alertRows.map((alert) => {
                             const alertMeta: Record<string, { label: string; desc: string; icon: typeof Bell; thresholdLabel?: string; thresholdSuffix?: string }> = {
                               low_balance: { label: "Low Balance Alert", desc: "Get notified when any account balance drops below a threshold.", icon: AlertTriangle, thresholdLabel: "Alert when balance falls below", thresholdSuffix: "$" },
@@ -1800,12 +1800,12 @@ export default function MyAccountPage() {
                             return (
                               <div key={alert.id} className={cn("px-5 py-4 transition-colors", !alert.enabled && "opacity-60")}>
                                 <div className="flex items-start gap-4">
-                                  <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5", alert.enabled ? "bg-blue-50" : "bg-slate-100")}>
-                                    <IconEl className={cn("w-5 h-5", alert.enabled ? "text-blue-700" : "text-slate-400")} />
+                                  <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5", alert.enabled ? "bg-blue-50" : "bg-[#F0ECE5]")}>
+                                    <IconEl className={cn("w-5 h-5", alert.enabled ? "text-blue-700" : "text-[#9A9AA8]")} />
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center justify-between gap-3 mb-0.5">
-                                      <p className="font-semibold text-slate-900 text-sm">{meta.label}</p>
+                                      <p className="font-semibold text-[#0D0E12] text-sm">{meta.label}</p>
                                       <button
                                         disabled={isSavingThis}
                                         onClick={() => saveAlert({ enabled: !alert.enabled })}
@@ -1818,20 +1818,20 @@ export default function MyAccountPage() {
                                         )} />
                                       </button>
                                     </div>
-                                    <p className="text-xs text-slate-500 mb-3">{meta.desc}</p>
+                                    <p className="text-xs text-[#7C7C8A] mb-3">{meta.desc}</p>
                                     {meta.thresholdLabel && alert.enabled && (
                                       <div className="flex items-center gap-2">
-                                        <label className="text-xs font-medium text-slate-600 whitespace-nowrap">{meta.thresholdLabel}</label>
-                                        <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden h-8 bg-slate-50 w-28">
-                                          {meta.thresholdSuffix === "$" && <span className="text-sm text-slate-500 pl-2.5 pr-1">$</span>}
+                                        <label className="text-xs font-medium text-[#3C3C4A] whitespace-nowrap">{meta.thresholdLabel}</label>
+                                        <div className="flex items-center border border-[#E5E0D8] rounded-lg overflow-hidden h-8 bg-[#F8F6F2] w-28">
+                                          {meta.thresholdSuffix === "$" && <span className="text-sm text-[#7C7C8A] pl-2.5 pr-1">$</span>}
                                           <input
                                             type="number"
                                             defaultValue={alert.threshold ?? ""}
                                             onBlur={(e) => saveAlert({ threshold: e.target.value })}
-                                            className="flex-1 h-full text-sm px-1.5 bg-transparent outline-none text-slate-800 w-full"
+                                            className="flex-1 h-full text-sm px-1.5 bg-transparent outline-none text-[#1A1A24] w-full"
                                             min={0}
                                           />
-                                          {meta.thresholdSuffix === "%" && <span className="text-sm text-slate-500 pr-2.5">%</span>}
+                                          {meta.thresholdSuffix === "%" && <span className="text-sm text-[#7C7C8A] pr-2.5">%</span>}
                                         </div>
                                       </div>
                                     )}
@@ -1843,9 +1843,9 @@ export default function MyAccountPage() {
                         </div>
                       )}
 
-                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-start gap-3">
+                      <div className="bg-[#F8F6F2] border border-[#E5E0D8] rounded-xl p-4 flex items-start gap-3">
                         <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                        <p className="text-xs text-slate-500 leading-relaxed">Alerts are sent via SMS to your registered phone number. Standard messaging rates may apply. You can turn off all alerts by texting <code className="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-mono text-[11px]">STOP</code> at any time.</p>
+                        <p className="text-xs text-[#7C7C8A] leading-relaxed">Alerts are sent via SMS to your registered phone number. Standard messaging rates may apply. You can turn off all alerts by texting <code className="bg-slate-200 text-[#2C2C35] px-1.5 py-0.5 rounded font-mono text-[11px]">STOP</code> at any time.</p>
                       </div>
                     </motion.div>
                   )}
@@ -1853,11 +1853,11 @@ export default function MyAccountPage() {
                   {/* ── SMS Activity ── */}
                   {activeSection === "sms" && (
                     <motion.div key="sms" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                      <div className="bg-white border border-[#E5E0D8] rounded-2xl overflow-hidden">
+                        <div className="px-5 py-4 border-b border-[#EDE8E0] flex items-center justify-between">
                           <div>
-                            <h3 className="font-bold text-slate-900 text-sm">SMS Activity</h3>
-                            <p className="text-xs text-slate-400 mt-0.5">Your recent text exchanges</p>
+                            <h3 className="font-bold text-[#0D0E12] text-sm">SMS Activity</h3>
+                            <p className="text-xs text-[#9A9AA8] mt-0.5">Your recent text exchanges</p>
                           </div>
                           <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium bg-emerald-50 px-2.5 py-1 rounded-full">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -1865,9 +1865,9 @@ export default function MyAccountPage() {
                           </div>
                         </div>
                         {!smsLogs || (smsLogs as unknown[]).length === 0 ? (
-                          <div className="py-12 text-center text-slate-400 text-sm">
+                          <div className="py-12 text-center text-[#9A9AA8] text-sm">
                             <MessageSquare className="w-8 h-8 mx-auto mb-3 opacity-30" />
-                            No SMS activity yet. Try texting <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">BAL</code> to get started.
+                            No SMS activity yet. Try texting <code className="bg-[#F0ECE5] px-1.5 py-0.5 rounded text-[#3C3C4A]">BAL</code> to get started.
                           </div>
                         ) : (
                           <div className="divide-y divide-slate-100">
@@ -1875,25 +1875,25 @@ export default function MyAccountPage() {
                               .slice(0, 15).map((log) => {
                                 const isIn = log.direction === "inbound";
                                 return (
-                                  <div key={log.id} className="px-5 py-3.5 hover:bg-slate-50 transition-colors">
+                                  <div key={log.id} className="px-5 py-3.5 hover:bg-[#F8F6F2] transition-colors">
                                     <div className="flex items-start gap-3">
-                                      <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5", isIn ? "bg-blue-50" : "bg-slate-100")}>
-                                        <MessageSquare className={cn("w-4 h-4", isIn ? "text-blue-600" : "text-slate-500")} />
+                                      <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5", isIn ? "bg-blue-50" : "bg-[#F0ECE5]")}>
+                                        <MessageSquare className={cn("w-4 h-4", isIn ? "text-blue-600" : "text-[#7C7C8A]")} />
                                       </div>
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                          <span className={cn("text-xs font-bold uppercase tracking-wide", isIn ? "text-blue-600" : "text-slate-500")}>
+                                          <span className={cn("text-xs font-bold uppercase tracking-wide", isIn ? "text-blue-600" : "text-[#7C7C8A]")}>
                                             {isIn ? "You" : "Text Banks"}
                                           </span>
-                                          {log.command && <code className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">{log.command}</code>}
+                                          {log.command && <code className="text-xs bg-[#F0ECE5] text-[#3C3C4A] px-1.5 py-0.5 rounded font-mono">{log.command}</code>}
                                           <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium ml-auto",
                                             log.status === "sent" || log.status === "delivered" ? "bg-emerald-50 text-emerald-700"
                                               : log.status === "failed" ? "bg-red-50 text-red-600"
-                                              : "bg-slate-100 text-slate-500"
+                                              : "bg-[#F0ECE5] text-[#7C7C8A]"
                                           )}>{log.status}</span>
                                         </div>
-                                        <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{log.message}</p>
-                                        <p className="text-xs text-slate-400 mt-1">
+                                        <p className="text-sm text-[#2C2C35] leading-relaxed whitespace-pre-line">{log.message}</p>
+                                        <p className="text-xs text-[#9A9AA8] mt-1">
                                           {new Date(log.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                                         </p>
                                       </div>
@@ -1906,7 +1906,7 @@ export default function MyAccountPage() {
                       </div>
 
                       <div className="mt-4 bg-slate-900 rounded-2xl p-5">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">All Commands</p>
+                        <p className="text-xs font-bold text-[#9A9AA8] uppercase tracking-widest mb-4">All Commands</p>
                         <div className="grid grid-cols-1 gap-2.5">
                           {[
                             ["BAL", "All account balances"],
@@ -1922,7 +1922,7 @@ export default function MyAccountPage() {
                           ].map(([cmd, desc]) => (
                             <div key={cmd} className="flex items-center gap-3">
                               <code className="text-blue-400 font-mono font-bold text-xs w-28 shrink-0">{cmd}</code>
-                              <span className="text-slate-500 text-xs">{desc}</span>
+                              <span className="text-[#7C7C8A] text-xs">{desc}</span>
                             </div>
                           ))}
                         </div>
@@ -1935,28 +1935,28 @@ export default function MyAccountPage() {
                     <motion.div key="settings" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-5">
 
                       {/* Profile */}
-                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                        <div className="px-6 py-4 border-b border-slate-100">
-                          <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                            <User className="w-4 h-4 text-slate-500" /> Profile
+                      <div className="bg-white border border-[#E5E0D8] rounded-2xl overflow-hidden">
+                        <div className="px-6 py-4 border-b border-[#EDE8E0]">
+                          <h3 className="font-bold text-[#0D0E12] text-sm flex items-center gap-2">
+                            <User className="w-4 h-4 text-[#7C7C8A]" /> Profile
                           </h3>
-                          <p className="text-xs text-slate-400 mt-0.5">Update your name and display info</p>
+                          <p className="text-xs text-[#9A9AA8] mt-0.5">Update your name and display info</p>
                         </div>
                         <div className="p-6 space-y-4">
                           <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5">
-                              <label className="text-xs font-semibold text-slate-700">First Name</label>
-                              <Input value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)} className="h-10 border-slate-200 rounded-xl text-sm" />
+                              <label className="text-xs font-semibold text-[#2C2C35]">First Name</label>
+                              <Input value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)} className="h-10 border-[#E5E0D8] rounded-xl text-sm" />
                             </div>
                             <div className="space-y-1.5">
-                              <label className="text-xs font-semibold text-slate-700">Last Name</label>
-                              <Input value={editLastName} onChange={(e) => setEditLastName(e.target.value)} className="h-10 border-slate-200 rounded-xl text-sm" />
+                              <label className="text-xs font-semibold text-[#2C2C35]">Last Name</label>
+                              <Input value={editLastName} onChange={(e) => setEditLastName(e.target.value)} className="h-10 border-[#E5E0D8] rounded-xl text-sm" />
                             </div>
                           </div>
                           {/* Phone Number Management */}
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">
-                              <label className="text-xs font-semibold text-slate-700">Mobile Number</label>
+                              <label className="text-xs font-semibold text-[#2C2C35]">Mobile Number</label>
                               {phoneSection === "view" && (
                                 <div className="flex items-center gap-1.5">
                                   {(freshUser as { phoneVerified?: boolean } | undefined)?.phoneVerified
@@ -1968,9 +1968,9 @@ export default function MyAccountPage() {
                             </div>
 
                             {/* Current number display */}
-                            <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                              <Phone className="w-4 h-4 text-slate-400 shrink-0" />
-                              <span className="text-sm font-mono font-semibold text-slate-800 flex-1">
+                            <div className="flex items-center gap-2 p-3 bg-[#F8F6F2] border border-[#E5E0D8] rounded-xl">
+                              <Phone className="w-4 h-4 text-[#9A9AA8] shrink-0" />
+                              <span className="text-sm font-mono font-semibold text-[#1A1A24] flex-1">
                                 {session.phoneNumber.replace(/(\d{1})(\d{3})(\d{3})(\d{4})/, "+$1 ($2) $3-$4")}
                               </span>
                               {phoneSection === "view" && (
@@ -2018,7 +2018,7 @@ export default function MyAccountPage() {
                                   </Button>
                                   <Button
                                     variant="outline"
-                                    className="rounded-xl h-9 text-xs border-slate-200"
+                                    className="rounded-xl h-9 text-xs border-[#E5E0D8]"
                                     onClick={() => { setPhoneSection("view"); setPhoneOtp(""); setPhoneError(null); }}
                                   >
                                     Cancel
@@ -2029,8 +2029,8 @@ export default function MyAccountPage() {
 
                             {/* Change number — enter new phone */}
                             {phoneSection === "change-request" && (
-                              <div className="space-y-3 p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                                <p className="text-xs text-slate-600 font-medium">Enter your new mobile number. We'll send a verification code to confirm it.</p>
+                              <div className="space-y-3 p-4 bg-[#F8F6F2] border border-[#E5E0D8] rounded-xl">
+                                <p className="text-xs text-[#3C3C4A] font-medium">Enter your new mobile number. We'll send a verification code to confirm it.</p>
                                 <PhoneInput
                                   value={newPhone}
                                   onChange={setNewPhone}
@@ -2046,7 +2046,7 @@ export default function MyAccountPage() {
                                   </Button>
                                   <Button
                                     variant="outline"
-                                    className="rounded-xl h-9 text-xs border-slate-200"
+                                    className="rounded-xl h-9 text-xs border-[#E5E0D8]"
                                     onClick={() => { setPhoneSection("view"); setNewPhone(""); setPhoneError(null); }}
                                   >
                                     Cancel
@@ -2078,7 +2078,7 @@ export default function MyAccountPage() {
                                   </Button>
                                   <Button
                                     variant="outline"
-                                    className="rounded-xl h-9 text-xs border-slate-200"
+                                    className="rounded-xl h-9 text-xs border-[#E5E0D8]"
                                     onClick={() => { setPhoneSection("change-request"); setPhoneOtp(""); setPhoneError(null); }}
                                   >
                                     Back
@@ -2102,7 +2102,7 @@ export default function MyAccountPage() {
                               <button
                                 onClick={handleReverifyPhone}
                                 disabled={phoneLoading}
-                                className="w-full flex items-center justify-center gap-2 text-xs font-medium text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl h-9 transition-colors disabled:opacity-50"
+                                className="w-full flex items-center justify-center gap-2 text-xs font-medium text-[#7C7C8A] hover:text-[#2C2C35] bg-[#F8F6F2] hover:bg-[#F0ECE5] border border-[#E5E0D8] rounded-xl h-9 transition-colors disabled:opacity-50"
                               >
                                 {phoneLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
                                 Re-verify My Number
@@ -2113,14 +2113,14 @@ export default function MyAccountPage() {
                       </div>
 
                       {/* Linked Phone Numbers (Premium) */}
-                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                      <div className="bg-white border border-[#E5E0D8] rounded-2xl overflow-hidden">
+                        <div className="px-6 py-4 border-b border-[#EDE8E0] flex items-center justify-between">
                           <div>
-                            <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                              <Smartphone className="w-4 h-4 text-slate-500" /> Linked Phone Numbers
+                            <h3 className="font-bold text-[#0D0E12] text-sm flex items-center gap-2">
+                              <Smartphone className="w-4 h-4 text-[#7C7C8A]" /> Linked Phone Numbers
                               <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5">Premium</span>
                             </h3>
-                            <p className="text-xs text-slate-400 mt-0.5">Text bank commands from any linked number</p>
+                            <p className="text-xs text-[#9A9AA8] mt-0.5">Text bank commands from any linked number</p>
                           </div>
                         </div>
                         <div className="p-6 space-y-4">
@@ -2130,8 +2130,8 @@ export default function MyAccountPage() {
                                 <Smartphone className="w-6 h-6 text-blue-600" />
                               </div>
                               <div>
-                                <p className="font-bold text-slate-900 text-sm">Multiple Phones</p>
-                                <p className="text-xs text-slate-500 mt-1">Upgrade to Premium to link additional numbers — family members or backup phones can all access your account.</p>
+                                <p className="font-bold text-[#0D0E12] text-sm">Multiple Phones</p>
+                                <p className="text-xs text-[#7C7C8A] mt-1">Upgrade to Premium to link additional numbers — family members or backup phones can all access your account.</p>
                               </div>
                               <button
                                 onClick={() => { setSelectedPlan("premium"); window.scrollTo({ top: 9999, behavior: "smooth" }); }}
@@ -2156,21 +2156,21 @@ export default function MyAccountPage() {
 
                               {/* List of existing secondary phones */}
                               {linkedPhonesLoading ? (
-                                <div className="flex items-center justify-center py-4 text-xs text-slate-400 gap-2">
+                                <div className="flex items-center justify-center py-4 text-xs text-[#9A9AA8] gap-2">
                                   <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading…
                                 </div>
                               ) : linkedPhones.length === 0 && addPhoneStep === "idle" ? (
-                                <div className="text-xs text-slate-400 text-center py-3">No additional numbers linked yet.</div>
+                                <div className="text-xs text-[#9A9AA8] text-center py-3">No additional numbers linked yet.</div>
                               ) : (
                                 <div className="space-y-2">
                                   {linkedPhones.map((p) => (
-                                    <div key={p.id} className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                                      <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                                    <div key={p.id} className="flex items-center gap-3 p-3 bg-[#F8F6F2] border border-[#E5E0D8] rounded-xl">
+                                      <Phone className="w-4 h-4 text-[#9A9AA8] shrink-0" />
                                       <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-mono font-semibold text-slate-800 truncate">
+                                        <p className="text-sm font-mono font-semibold text-[#1A1A24] truncate">
                                           {p.phoneNumber.replace(/(\d{1})(\d{3})(\d{3})(\d{4})/, "+$1 ($2) $3-$4")}
                                         </p>
-                                        {p.label && <p className="text-[10px] text-slate-400">{p.label}</p>}
+                                        {p.label && <p className="text-[10px] text-[#9A9AA8]">{p.label}</p>}
                                       </div>
                                       {p.verified
                                         ? <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 shrink-0">Verified</span>
@@ -2199,8 +2199,8 @@ export default function MyAccountPage() {
                               )}
 
                               {addPhoneStep === "form" && (
-                                <div className="space-y-3 p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                                  <p className="text-xs text-slate-600 font-medium">Enter the new number. We'll send a 6-digit code to verify it.</p>
+                                <div className="space-y-3 p-4 bg-[#F8F6F2] border border-[#E5E0D8] rounded-xl">
+                                  <p className="text-xs text-[#3C3C4A] font-medium">Enter the new number. We'll send a 6-digit code to verify it.</p>
                                   <div className="space-y-2">
                                     <PhoneInput
                                       value={addPhoneNumber}
@@ -2211,7 +2211,7 @@ export default function MyAccountPage() {
                                       value={addPhoneLabel}
                                       onChange={(e) => setAddPhoneLabel(e.target.value)}
                                       placeholder="Label (optional — e.g. Mom's phone)"
-                                      className="h-10 border-slate-200 rounded-xl text-sm"
+                                      className="h-10 border-[#E5E0D8] rounded-xl text-sm"
                                     />
                                   </div>
                                   <div className="flex gap-2">
@@ -2222,7 +2222,7 @@ export default function MyAccountPage() {
                                     >
                                       {addPhoneLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Send Code"}
                                     </Button>
-                                    <Button variant="outline" className="rounded-xl h-9 text-xs border-slate-200"
+                                    <Button variant="outline" className="rounded-xl h-9 text-xs border-[#E5E0D8]"
                                       onClick={() => { setAddPhoneStep("idle"); setAddPhoneError(null); }}>
                                       Cancel
                                     </Button>
@@ -2250,7 +2250,7 @@ export default function MyAccountPage() {
                                     >
                                       {addPhoneLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Verify & Link"}
                                     </Button>
-                                    <Button variant="outline" className="rounded-xl h-9 text-xs border-slate-200"
+                                    <Button variant="outline" className="rounded-xl h-9 text-xs border-[#E5E0D8]"
                                       onClick={() => { setAddPhoneStep("form"); setAddPhoneOtp(""); setAddPhoneError(null); }}>
                                       Back
                                     </Button>
@@ -2265,29 +2265,29 @@ export default function MyAccountPage() {
                                 </div>
                               )}
 
-                              <p className="text-[10px] text-slate-400 text-center">Verified numbers can text any command and receive balance/transaction info just like the primary number.</p>
+                              <p className="text-[10px] text-[#9A9AA8] text-center">Verified numbers can text any command and receive balance/transaction info just like the primary number.</p>
                             </>
                           )}
                         </div>
                       </div>
 
                       {/* SMS Preferences */}
-                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                        <div className="px-6 py-4 border-b border-slate-100">
-                          <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                            <MessageSquare className="w-4 h-4 text-slate-500" /> SMS Preferences
+                      <div className="bg-white border border-[#E5E0D8] rounded-2xl overflow-hidden">
+                        <div className="px-6 py-4 border-b border-[#EDE8E0]">
+                          <h3 className="font-bold text-[#0D0E12] text-sm flex items-center gap-2">
+                            <MessageSquare className="w-4 h-4 text-[#7C7C8A]" /> SMS Preferences
                           </h3>
-                          <p className="text-xs text-slate-400 mt-0.5">Control how Text Banks messages you</p>
+                          <p className="text-xs text-[#9A9AA8] mt-0.5">Control how Text Banks messages you</p>
                         </div>
                         <div className="p-6 space-y-4">
-                          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+                          <div className="flex items-center justify-between p-4 bg-[#F8F6F2] rounded-xl border border-[#E5E0D8]">
                             <div className="flex items-center gap-3">
                               <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", smsOptedIn ? "bg-emerald-50" : "bg-slate-200")}>
-                                {smsOptedIn ? <Bell className="w-5 h-5 text-emerald-600" /> : <BellOff className="w-5 h-5 text-slate-400" />}
+                                {smsOptedIn ? <Bell className="w-5 h-5 text-emerald-600" /> : <BellOff className="w-5 h-5 text-[#9A9AA8]" />}
                               </div>
                               <div>
-                                <p className="text-sm font-semibold text-slate-900">SMS Messages</p>
-                                <p className="text-xs text-slate-500">{smsOptedIn ? "You will receive SMS replies" : "SMS responses are paused"}</p>
+                                <p className="text-sm font-semibold text-[#0D0E12]">SMS Messages</p>
+                                <p className="text-xs text-[#7C7C8A]">{smsOptedIn ? "You will receive SMS replies" : "SMS responses are paused"}</p>
                               </div>
                             </div>
                             <button
@@ -2302,32 +2302,32 @@ export default function MyAccountPage() {
                             </button>
                           </div>
 
-                          <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 text-sm">
-                            <p className="text-xs font-semibold text-slate-700 mb-2">Text Banks SMS Number</p>
+                          <div className="bg-[#F8F6F2] rounded-xl border border-[#E5E0D8] p-4 text-sm">
+                            <p className="text-xs font-semibold text-[#2C2C35] mb-2">Text Banks SMS Number</p>
                             <div className="flex items-center gap-3">
                               <div className="w-9 h-9 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-center">
                                 <Phone className="w-4 h-4 text-blue-600" />
                               </div>
                               <div>
-                                <p className="font-mono font-bold text-slate-900">(845) 689-0940</p>
-                                <p className="text-xs text-slate-500">Text commands to this number</p>
+                                <p className="font-mono font-bold text-[#0D0E12]">(845) 689-0940</p>
+                                <p className="text-xs text-[#7C7C8A]">Text commands to this number</p>
                               </div>
                             </div>
                           </div>
 
-                          <div className="text-xs text-slate-400 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                          <div className="text-xs text-[#9A9AA8] bg-amber-50 border border-amber-200 rounded-lg p-3">
                             You can also text <code className="font-mono bg-amber-100 px-1 rounded">STOP</code> to (845) 689-0940 at any time to immediately opt out, or <code className="font-mono bg-amber-100 px-1 rounded">START</code> to re-enable.
                           </div>
                         </div>
                       </div>
 
                       {/* Billing & Plan */}
-                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                        <div className="px-6 py-4 border-b border-slate-100">
-                          <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                            <Zap className="w-4 h-4 text-slate-500" /> Plan & Billing
+                      <div className="bg-white border border-[#E5E0D8] rounded-2xl overflow-hidden">
+                        <div className="px-6 py-4 border-b border-[#EDE8E0]">
+                          <h3 className="font-bold text-[#0D0E12] text-sm flex items-center gap-2">
+                            <Zap className="w-4 h-4 text-[#7C7C8A]" /> Plan & Billing
                           </h3>
-                          <p className="text-xs text-slate-400 mt-0.5">Manage your subscription</p>
+                          <p className="text-xs text-[#9A9AA8] mt-0.5">Manage your subscription</p>
                         </div>
                         <div className="p-6 space-y-4">
                           <div className="grid grid-cols-2 gap-3">
@@ -2341,7 +2341,7 @@ export default function MyAccountPage() {
                                 className={cn("relative text-left p-4 rounded-xl border-2 transition-all",
                                   selectedPlan === plan.key
                                     ? "border-blue-600 bg-blue-50"
-                                    : "border-slate-200 bg-white hover:border-slate-300"
+                                    : "border-[#E5E0D8] bg-white hover:border-slate-300"
                                 )}
                               >
                                 {selectedPlan === plan.key && (
@@ -2349,11 +2349,11 @@ export default function MyAccountPage() {
                                     <Check className="w-3 h-3 text-white" />
                                   </div>
                                 )}
-                                <p className="font-bold text-slate-900 text-sm mb-0.5">{plan.name}</p>
-                                <p className={cn("text-base font-bold mb-3", selectedPlan === plan.key ? "text-blue-700" : "text-slate-700")}>{plan.price}</p>
+                                <p className="font-bold text-[#0D0E12] text-sm mb-0.5">{plan.name}</p>
+                                <p className={cn("text-base font-bold mb-3", selectedPlan === plan.key ? "text-blue-700" : "text-[#2C2C35]")}>{plan.price}</p>
                                 <ul className="space-y-1">
                                   {plan.features.map((f) => (
-                                    <li key={f} className="flex items-center gap-1.5 text-xs text-slate-500">
+                                    <li key={f} className="flex items-center gap-1.5 text-xs text-[#7C7C8A]">
                                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                                       {f}
                                     </li>
@@ -2410,14 +2410,14 @@ export default function MyAccountPage() {
               transition={{ duration: 0.15 }}
               className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden"
             >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#EDE8E0]">
                 <div>
-                  <h2 className="text-base font-bold text-slate-900">Reset Password</h2>
-                  <p className="text-xs text-slate-500">
+                  <h2 className="text-base font-bold text-[#0D0E12]">Reset Password</h2>
+                  <p className="text-xs text-[#7C7C8A]">
                     {forgotStep === "email" ? "Email reset link" : forgotStep === "sms" ? "SMS OTP" : "Enter new password"}
                   </p>
                 </div>
-                <button onClick={() => setShowForgotPw(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
+                <button onClick={() => setShowForgotPw(false)} className="text-[#9A9AA8] hover:text-[#3C3C4A] p-1 rounded-lg hover:bg-[#F0ECE5]">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -2434,16 +2434,16 @@ export default function MyAccountPage() {
                   <>
                     {/* Method toggle */}
                     {forgotStep !== "reset" && (
-                      <div className="flex rounded-xl overflow-hidden border border-slate-200">
+                      <div className="flex rounded-xl overflow-hidden border border-[#E5E0D8]">
                         <button
                           className={cn("flex-1 py-2 text-xs font-semibold transition-colors",
-                            forgotStep === "email" ? "bg-blue-700 text-white" : "text-slate-500 hover:bg-slate-50"
+                            forgotStep === "email" ? "bg-blue-700 text-white" : "text-[#7C7C8A] hover:bg-[#F8F6F2]"
                           )}
                           onClick={() => { setForgotStep("email"); setForgotError(null); }}
                         >Email link</button>
                         <button
                           className={cn("flex-1 py-2 text-xs font-semibold transition-colors",
-                            forgotStep === "sms" ? "bg-blue-700 text-white" : "text-slate-500 hover:bg-slate-50"
+                            forgotStep === "sms" ? "bg-blue-700 text-white" : "text-[#7C7C8A] hover:bg-[#F8F6F2]"
                           )}
                           onClick={() => { setForgotStep("sms"); setForgotError(null); }}
                         >SMS OTP</button>
@@ -2452,12 +2452,12 @@ export default function MyAccountPage() {
 
                     {forgotStep === "email" && (
                       <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-700">Email address</label>
+                        <label className="text-xs font-semibold text-[#2C2C35]">Email address</label>
                         <div className="relative">
-                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9A9AA8]" />
                           <Input
                             type="email" placeholder="your@email.com"
-                            className="pl-9 rounded-xl border-slate-200 h-10 text-sm"
+                            className="pl-9 rounded-xl border-[#E5E0D8] h-10 text-sm"
                             value={forgotEmail}
                             onChange={(e) => setForgotEmail(e.target.value)}
                             onKeyDown={(e) => e.key === "Enter" && handleForgotPassword()}
@@ -2468,7 +2468,7 @@ export default function MyAccountPage() {
 
                     {forgotStep === "sms" && (
                       <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-700">Mobile number</label>
+                        <label className="text-xs font-semibold text-[#2C2C35]">Mobile number</label>
                         <PhoneInput
                           value={forgotPhone}
                           onChange={(v) => setForgotPhone(v)}
@@ -2479,27 +2479,27 @@ export default function MyAccountPage() {
 
                     {forgotStep === "reset" && (
                       <div className="space-y-3">
-                        <p className="text-xs text-slate-600">Enter the 6-digit code sent to your phone, then choose a new password.</p>
+                        <p className="text-xs text-[#3C3C4A]">Enter the 6-digit code sent to your phone, then choose a new password.</p>
                         <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-slate-700">OTP Code</label>
+                          <label className="text-xs font-semibold text-[#2C2C35]">OTP Code</label>
                           <Input
                             value={forgotOtp}
                             onChange={(e) => setForgotOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                             placeholder="000000"
                             maxLength={6}
-                            className="h-10 font-mono tracking-widest text-center rounded-xl border-slate-200 text-sm"
+                            className="h-10 font-mono tracking-widest text-center rounded-xl border-[#E5E0D8] text-sm"
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-slate-700">New password</label>
+                          <label className="text-xs font-semibold text-[#2C2C35]">New password</label>
                           <div className="relative">
-                            <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9A9AA8]" />
                             <Input
                               type="password"
                               value={forgotNewPw}
                               onChange={(e) => setForgotNewPw(e.target.value)}
                               placeholder="Min 6 characters"
-                              className="pl-9 h-10 rounded-xl border-slate-200 text-sm"
+                              className="pl-9 h-10 rounded-xl border-[#E5E0D8] text-sm"
                             />
                           </div>
                         </div>
@@ -2542,12 +2542,12 @@ export default function MyAccountPage() {
               transition={{ duration: 0.15 }}
               className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden"
             >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#EDE8E0]">
                 <div className="flex items-center gap-2">
                   <Bug className="w-4 h-4 text-red-500" />
-                  <h2 className="text-base font-bold text-slate-900">Report a Bug</h2>
+                  <h2 className="text-base font-bold text-[#0D0E12]">Report a Bug</h2>
                 </div>
-                <button onClick={() => setShowReportBug(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
+                <button onClick={() => setShowReportBug(false)} className="text-[#9A9AA8] hover:text-[#3C3C4A] p-1 rounded-lg hover:bg-[#F0ECE5]">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -2562,12 +2562,12 @@ export default function MyAccountPage() {
                   </div>
                 ) : (
                   <>
-                    <p className="text-xs text-slate-500">Describe what happened and what you expected. We'll investigate.</p>
+                    <p className="text-xs text-[#7C7C8A]">Describe what happened and what you expected. We'll investigate.</p>
                     <textarea
                       value={bugReport}
                       onChange={(e) => setBugReport(e.target.value)}
                       placeholder="e.g. When I clicked 'Link Bank', nothing happened..."
-                      className="w-full min-h-[100px] text-sm border border-slate-200 rounded-xl px-3 py-2.5 placeholder:text-slate-400 resize-none outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition-shadow"
+                      className="w-full min-h-[100px] text-sm border border-[#E5E0D8] rounded-xl px-3 py-2.5 placeholder:text-[#9A9AA8] resize-none outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition-shadow"
                     />
                     <Button
                       className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm"
@@ -2600,14 +2600,14 @@ export default function MyAccountPage() {
                 <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <Clock className="w-7 h-7 text-amber-600" />
                 </div>
-                <h2 className="text-base font-bold text-slate-900 mb-1">Still there?</h2>
-                <p className="text-sm text-slate-500 mb-5">
+                <h2 className="text-base font-bold text-[#0D0E12] mb-1">Still there?</h2>
+                <p className="text-sm text-[#7C7C8A] mb-5">
                   You've been inactive for 30 minutes. We'll sign you out in 60 seconds for your security.
                 </p>
                 <div className="flex gap-3">
                   <Button
                     variant="outline"
-                    className="flex-1 rounded-xl border-slate-200 text-slate-700 h-10 text-sm"
+                    className="flex-1 rounded-xl border-[#E5E0D8] text-[#2C2C35] h-10 text-sm"
                     onClick={handleSignOut}
                   >
                     Sign Out

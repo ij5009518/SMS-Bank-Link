@@ -155,39 +155,39 @@ export default function LandingPage() {
   return (
     <PublicLayout>
       {/* ── Hero ── */}
-      <section className="relative bg-slate-900 overflow-hidden">
-        <div className="absolute inset-0">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-slate-900 to-slate-900" />
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-blue-600/10 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-indigo-600/10 rounded-full blur-3xl" />
-        </div>
+      <section className="relative bg-[#0B0C0F] overflow-hidden">
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMiI+PHBhdGggZD0iTTM2IDM0di00aC0ydjRoLTR2Mmg0djRoMnYtNGg0di0yaC00em0wLTMwVjBoLTJ2NGgtNHYyaDR2NGgyVjZoNFY0aC00ek02IDM0di00SDR2NEgwdjJoNHY0aDJ2LTRoNHYtMkg2ek02IDRWMEg0djRIMHYyaDR2NGgyVjZoNFY0SDZ6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-40" />
+        <div className="absolute top-0 right-0 w-px h-full bg-gradient-to-b from-transparent via-white/5 to-transparent" />
 
-        <div className="container mx-auto px-4 md:px-6 py-20 md:py-32 relative z-10">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
+        <div className="container mx-auto px-4 md:px-6 py-20 md:py-28 relative z-10">
+          <div className="grid lg:grid-cols-[1fr_auto] gap-12 lg:gap-16 items-center">
             <motion.div
-              initial={{ opacity: 0, y: 24 }}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.55 }}
+              transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
+              className="max-w-2xl"
             >
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 mb-8">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-xs font-semibold text-blue-200 uppercase tracking-widest">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 mb-8">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[11px] font-semibold text-white/60 uppercase tracking-[0.12em]">
                   Banking by SMS
                 </span>
               </div>
 
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-extrabold text-white leading-[1.08] tracking-tight mb-6">
-                Check your balance with a{" "}
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400">
-                  text message.
+              <h1 className="text-5xl md:text-6xl lg:text-7xl font-display font-bold text-white leading-[1.02] mb-6">
+                Check your balance
+                <br />
+                with a{" "}
+                <span className="text-[#4D9BFF]">
+                  text.
                 </span>
               </h1>
 
-              <p className="text-lg text-slate-400 mb-10 leading-relaxed max-w-lg">
-                No smartphone. No data plan. No app. Link your bank account once and text{" "}
-                <span className="font-mono text-slate-200 bg-slate-800 px-1.5 py-0.5 rounded text-sm">BAL</span>{" "}
+              <p className="text-base text-white/50 mb-10 leading-[1.75] max-w-md">
+                No smartphone. No data plan. No app. Link your bank once and text{" "}
+                <code className="text-white/80 bg-white/8 border border-white/10 px-1.5 py-0.5 rounded text-sm font-mono">BAL</code>{" "}
                 or{" "}
-                <span className="font-mono text-slate-200 bg-slate-800 px-1.5 py-0.5 rounded text-sm">TRANS</span>{" "}
+                <code className="text-white/80 bg-white/8 border border-white/10 px-1.5 py-0.5 rounded text-sm font-mono">TRANS</code>{" "}
                 from any phone.
               </p>
 
@@ -195,31 +195,31 @@ export default function LandingPage() {
                 <Link href="/register">
                   <Button
                     size="lg"
-                    className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-8 h-12 text-base font-semibold shadow-lg shadow-blue-900/40 group"
+                    className="bg-[#2563EB] hover:bg-[#1D58D8] text-white rounded-lg px-7 h-11 text-sm font-semibold group border-0"
                   >
                     Get Started Free
-                    <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                    <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-0.5 transition-transform" />
                   </Button>
                 </Link>
                 <Link href="/my-account">
                   <Button
                     size="lg"
-                    variant="outline"
-                    className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white rounded-xl px-8 h-12 text-base"
+                    variant="ghost"
+                    className="text-white/60 hover:text-white hover:bg-white/8 rounded-lg px-7 h-11 text-sm"
                   >
                     Sign In
                   </Button>
                 </Link>
               </div>
 
-              <div className="mt-10 flex flex-wrap gap-6">
+              <div className="mt-10 flex flex-wrap gap-5 pt-10 border-t border-white/8">
                 {[
                   { icon: ShieldCheck, text: "Read-only access" },
                   { icon: Lock, text: "Bank-grade security" },
                   { icon: Zap, text: "Instant replies" },
                 ].map(({ icon: Icon, text }) => (
-                  <div key={text} className="flex items-center gap-2 text-sm text-slate-400">
-                    <Icon className="w-4 h-4 text-emerald-400" />
+                  <div key={text} className="flex items-center gap-2 text-sm text-white/40">
+                    <Icon className="w-3.5 h-3.5 text-white/30" />
                     {text}
                   </div>
                 ))}
@@ -228,58 +228,53 @@ export default function LandingPage() {
 
             {/* Phone mockup */}
             <motion.div
-              initial={{ opacity: 0, y: 32 }}
+              initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.55, delay: 0.15 }}
+              transition={{ duration: 0.5, delay: 0.1, ease: [0.25, 0.1, 0.25, 1] }}
               className="flex justify-center lg:justify-end"
             >
               <div className="relative">
-                <div className="absolute inset-0 bg-blue-600/20 rounded-[3rem] blur-2xl scale-90 translate-y-4" />
-                <div className="relative w-[300px] bg-slate-800 rounded-[2.5rem] p-3.5 shadow-2xl border border-slate-700/60">
-                  <div className="bg-slate-900 rounded-[2rem] overflow-hidden">
-                    {/* Status bar */}
-                    <div className="bg-slate-900 px-6 pt-4 pb-2 flex justify-between items-center">
-                      <span className="text-xs text-slate-400 font-medium">9:41 AM</span>
+                <div className="relative w-[288px] bg-[#161719] rounded-[2.25rem] p-3 shadow-2xl border border-white/10 ring-1 ring-white/5">
+                  <div className="bg-[#0F1011] rounded-[1.75rem] overflow-hidden">
+                    <div className="px-6 pt-4 pb-2 flex justify-between items-center">
+                      <span className="text-[11px] text-white/30 font-medium tabular-nums">9:41 AM</span>
                       <div className="flex gap-1">
-                        <div className="w-1 h-1 rounded-full bg-emerald-400" />
-                        <div className="w-1 h-1 rounded-full bg-emerald-400" />
+                        <div className="w-1 h-1 rounded-full bg-white/20" />
+                        <div className="w-1 h-1 rounded-full bg-white/20" />
                         <div className="w-1 h-1 rounded-full bg-emerald-400" />
                       </div>
                     </div>
-                    {/* Chat header */}
-                    <div className="bg-slate-800 border-b border-slate-700 px-4 py-3 text-center">
-                      <p className="text-white font-semibold text-sm">Text Banks</p>
-                      <p className="text-xs text-slate-400">(845) 689-0940</p>
+                    <div className="border-b border-white/6 px-4 py-3 text-center">
+                      <p className="text-white/90 font-semibold text-sm">Text Banks</p>
+                      <p className="text-[11px] text-white/30 mt-0.5">(845) 689-0940</p>
                     </div>
-                    {/* Messages */}
-                    <div className="bg-slate-900 min-h-[280px] p-4 flex flex-col gap-3">
+                    <div className="min-h-[280px] p-4 flex flex-col gap-3 bg-[#0F1011]">
                       {demoMessages.map((msg, i) => (
                         <div
                           key={i}
-                          className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
+                          className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-[12px] leading-relaxed ${
                             msg.isUser
-                              ? "bg-blue-600 text-white self-end rounded-br-sm"
-                              : "bg-slate-700 text-slate-100 self-start rounded-bl-sm"
+                              ? "bg-[#2563EB] text-white self-end rounded-br-sm"
+                              : "bg-[#1E2025] text-white/80 self-start rounded-bl-sm border border-white/6"
                           }`}
                         >
                           {msg.text}
                         </div>
                       ))}
                       {demoLoading && (
-                        <div className="bg-slate-700 self-start rounded-2xl rounded-bl-sm px-3.5 py-2.5 flex gap-1">
-                          <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" />
-                          <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:0.1s]" />
-                          <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:0.2s]" />
+                        <div className="bg-[#1E2025] border border-white/6 self-start rounded-2xl rounded-bl-sm px-3.5 py-2.5 flex gap-1">
+                          <div className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce [animation-delay:0.1s]" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce [animation-delay:0.2s]" />
                         </div>
                       )}
                     </div>
-                    {/* Input */}
                     <form
                       onSubmit={handleSimulate}
-                      className="bg-slate-800 border-t border-slate-700 p-3 flex gap-2 items-center"
+                      className="border-t border-white/6 bg-[#161719] p-3 flex gap-2 items-center"
                     >
                       <input
-                        className="flex-1 bg-slate-700 border-0 rounded-full px-4 py-2 text-xs text-white placeholder:text-slate-500 outline-none"
+                        className="flex-1 bg-white/5 border border-white/8 rounded-full px-4 py-2 text-[12px] text-white placeholder:text-white/25 outline-none focus:border-white/20 transition-colors"
                         placeholder="Try BAL or TRANS…"
                         value={demoInput}
                         onChange={(e) => setDemoInput(e.target.value)}
@@ -288,7 +283,7 @@ export default function LandingPage() {
                       <button
                         type="submit"
                         disabled={!demoInput.trim() || demoLoading}
-                        className="w-8 h-8 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 rounded-full flex items-center justify-center shrink-0 transition-colors"
+                        className="w-8 h-8 bg-[#2563EB] hover:bg-[#1D58D8] disabled:opacity-30 rounded-full flex items-center justify-center shrink-0 transition-colors"
                       >
                         <Send className="w-3.5 h-3.5 text-white" />
                       </button>
@@ -300,16 +295,11 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Wave bottom */}
-        <div className="absolute bottom-0 left-0 right-0">
-          <svg viewBox="0 0 1440 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
-            <path d="M0 60L1440 60L1440 20C1200 60 960 0 720 20C480 40 240 0 0 20L0 60Z" fill="#f8fafc" />
-          </svg>
-        </div>
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-white/6" />
       </section>
 
       {/* ── Trust bar ── */}
-      <section className="bg-slate-50 py-10 border-b border-slate-200">
+      <section className="bg-[#F8F6F2] py-10 border-b border-[#E5E0D8]">
         <div className="container mx-auto px-4 md:px-6">
           <div className="flex flex-col sm:flex-row items-center justify-center gap-8 md:gap-16">
             {[
@@ -319,8 +309,8 @@ export default function LandingPage() {
               { value: "Bank-grade", label: "TLS encryption" },
             ].map((stat) => (
               <div key={stat.label} className="text-center">
-                <p className="text-2xl font-display font-bold text-slate-900">{stat.value}</p>
-                <p className="text-sm text-slate-500 mt-0.5">{stat.label}</p>
+                <p className="text-2xl font-display font-bold text-[#0D0E12]">{stat.value}</p>
+                <p className="text-sm text-[#7C7C8A] mt-0.5">{stat.label}</p>
               </div>
             ))}
           </div>
@@ -328,21 +318,21 @@ export default function LandingPage() {
       </section>
 
       {/* ── Bank Logos Marquee ── */}
-      <section className="bg-white py-10 border-b border-slate-100 overflow-hidden">
+      <section className="bg-[#F8F6F2] py-10 border-b border-[#EDE8E0] overflow-hidden">
         <div className="container mx-auto px-4 md:px-6 mb-6 text-center">
-          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Works with your bank</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-[#9A9AA8]">Works with your bank</p>
         </div>
         <div className="relative">
-          <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none" />
-          <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none" />
+          <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-[#F8F6F2] to-transparent z-10 pointer-events-none" />
+          <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-[#F8F6F2] to-transparent z-10 pointer-events-none" />
           <div className="flex gap-3 marquee-track">
             {[...BANK_LOGOS, ...BANK_LOGOS].map((bank, i) => (
               <div
                 key={i}
-                className="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-slate-200 bg-white shrink-0 hover:border-slate-300 hover:shadow-sm transition-all"
+                className="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-[#E5E0D8] bg-white shrink-0 hover:border-[#D6CFC5] hover:shadow-sm transition-all"
               >
                 <BankLogoIcon bank={bank} />
-                <span className="text-sm font-semibold text-slate-700 whitespace-nowrap">{bank.name}</span>
+                <span className="text-sm font-semibold text-[#2C2C35] whitespace-nowrap">{bank.name}</span>
               </div>
             ))}
           </div>
@@ -361,16 +351,16 @@ export default function LandingPage() {
       </section>
 
       {/* ── How it works ── */}
-      <section className="py-24 bg-white">
+      <section className="py-24 bg-[#FAFAF7]">
         <div className="container mx-auto px-4 md:px-6">
           <div className="text-center max-w-2xl mx-auto mb-16">
-            <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
+            <div className="inline-block text-xs font-bold uppercase tracking-widest text-[#1D4ED8] bg-[#EBF2FF] px-3 py-1.5 rounded-full mb-4">
               How It Works
             </div>
-            <h2 className="text-3xl md:text-4xl font-display font-bold text-slate-900 mb-4">
+            <h2 className="text-3xl md:text-4xl font-display font-bold text-[#0D0E12] mb-4">
               Up and running in minutes
             </h2>
-            <p className="text-slate-500 text-lg">
+            <p className="text-[#7C7C8A] text-lg">
               Three simple steps to access your finances from any mobile phone.
             </p>
           </div>
@@ -382,7 +372,7 @@ export default function LandingPage() {
                 icon: Smartphone,
                 title: "Register your number",
                 desc: "Sign up on our secure web portal with your name and the phone number you'll use to send texts.",
-                color: "bg-blue-50 text-blue-700",
+                color: "bg-blue-50 text-[#1D4ED8]",
               },
               {
                 step: "02",
@@ -408,15 +398,15 @@ export default function LandingPage() {
                 className="relative"
               >
                 {i < 2 && (
-                  <div className="hidden md:block absolute top-9 left-full w-full h-px border-t-2 border-dashed border-slate-200 z-0 -translate-x-4" />
+                  <div className="hidden md:block absolute top-9 left-full w-full h-px border-t-2 border-dashed border-[#E5E0D8] z-0 -translate-x-4" />
                 )}
-                <div className="relative bg-white border border-slate-200 rounded-2xl p-7 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="text-xs font-bold text-slate-400 mb-4">{step.step}</div>
+                <div className="relative bg-white border border-[#E5E0D8] rounded-2xl p-7 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="text-xs font-bold text-[#9A9AA8] mb-4">{step.step}</div>
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-5 ${step.color}`}>
                     <step.icon className="w-6 h-6" />
                   </div>
-                  <h3 className="text-lg font-bold text-slate-900 mb-2">{step.title}</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">{step.desc}</p>
+                  <h3 className="text-lg font-bold text-[#0D0E12] mb-2">{step.title}</h3>
+                  <p className="text-[#7C7C8A] text-sm leading-relaxed">{step.desc}</p>
                 </div>
               </motion.div>
             ))}
@@ -425,16 +415,16 @@ export default function LandingPage() {
       </section>
 
       {/* ── Features ── */}
-      <section className="py-24 bg-slate-50 border-y border-slate-200">
+      <section className="py-24 bg-[#F8F6F2] border-y border-[#E5E0D8]">
         <div className="container mx-auto px-4 md:px-6">
           <div className="text-center max-w-2xl mx-auto mb-16">
-            <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
+            <div className="inline-block text-xs font-bold uppercase tracking-widest text-[#1D4ED8] bg-[#EBF2FF] px-3 py-1.5 rounded-full mb-4">
               Why Text Banks
             </div>
-            <h2 className="text-3xl md:text-4xl font-display font-bold text-slate-900 mb-4">
+            <h2 className="text-3xl md:text-4xl font-display font-bold text-[#0D0E12] mb-4">
               Built for everyone, secured for all
             </h2>
-            <p className="text-slate-500 text-lg">
+            <p className="text-[#7C7C8A] text-lg">
               Financial access shouldn't require a smartphone or a data plan.
             </p>
           </div>
@@ -466,13 +456,13 @@ export default function LandingPage() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.08 }}
-                className="bg-white border border-slate-200 rounded-2xl p-7 shadow-sm hover:shadow-md transition-shadow"
+                className="bg-white border border-[#E5E0D8] rounded-2xl p-7 shadow-sm hover:shadow-md transition-shadow"
               >
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-6 ${feature.accent}`}>
                   <feature.icon className="w-6 h-6" />
                 </div>
-                <h3 className="text-lg font-bold text-slate-900 mb-3">{feature.title}</h3>
-                <p className="text-slate-500 leading-relaxed text-sm">{feature.desc}</p>
+                <h3 className="text-lg font-bold text-[#0D0E12] mb-3">{feature.title}</h3>
+                <p className="text-[#7C7C8A] leading-relaxed text-sm">{feature.desc}</p>
               </motion.div>
             ))}
           </div>
@@ -480,14 +470,14 @@ export default function LandingPage() {
       </section>
 
       {/* ── SMS Command Reference ── */}
-      <section className="py-24 bg-white">
+      <section className="py-24 bg-[#FAFAF7]">
         <div className="container mx-auto px-4 md:px-6">
           <div className="max-w-3xl mx-auto">
             <div className="text-center mb-12">
-              <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
+              <div className="inline-block text-xs font-bold uppercase tracking-widest text-[#1D4ED8] bg-[#EBF2FF] px-3 py-1.5 rounded-full mb-4">
                 SMS Commands
               </div>
-              <h2 className="text-3xl md:text-4xl font-display font-bold text-slate-900">
+              <h2 className="text-3xl md:text-4xl font-display font-bold text-[#0D0E12]">
                 Simple commands. Instant answers.
               </h2>
             </div>
@@ -499,7 +489,7 @@ export default function LandingPage() {
                   <div className="w-3 h-3 rounded-full bg-slate-700" />
                   <div className="w-3 h-3 rounded-full bg-slate-700" />
                 </div>
-                <span className="text-xs text-slate-500 ml-2">SMS Commands</span>
+                <span className="text-xs text-[#7C7C8A] ml-2">SMS Commands</span>
               </div>
               <div className="p-6 space-y-4">
                 {[
@@ -512,7 +502,7 @@ export default function LandingPage() {
                   <div key={cmd} className="grid md:grid-cols-3 gap-3 md:items-start border-b border-slate-800 pb-4 last:border-0 last:pb-0">
                     <div>
                       <code className="text-blue-400 font-mono font-bold text-sm">{cmd}</code>
-                      <p className="text-slate-500 text-xs mt-1">{desc}</p>
+                      <p className="text-[#7C7C8A] text-xs mt-1">{desc}</p>
                     </div>
                     <div className="md:col-span-2">
                       <div className="bg-slate-800 rounded-lg px-3 py-2">
@@ -528,30 +518,30 @@ export default function LandingPage() {
       </section>
 
       {/* ── Pricing ── */}
-      <section className="py-24 bg-slate-50 border-t border-slate-200" id="pricing">
+      <section className="py-24 bg-[#F8F6F2] border-t border-[#E5E0D8]" id="pricing">
         <div className="container mx-auto px-4 md:px-6">
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
+            <div className="inline-block text-xs font-bold uppercase tracking-widest text-[#1D4ED8] bg-[#EBF2FF] px-3 py-1.5 rounded-full mb-4">
               Pricing
             </div>
-            <h2 className="text-3xl md:text-4xl font-display font-bold text-slate-900 mb-4">
+            <h2 className="text-3xl md:text-4xl font-display font-bold text-[#0D0E12] mb-4">
               Transparent, simple pricing
             </h2>
-            <p className="text-slate-500 text-lg">
+            <p className="text-[#7C7C8A] text-lg">
               Start free. Upgrade when you need more.
             </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
             {/* Basic */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm flex flex-col">
+            <div className="bg-white border border-[#E5E0D8] rounded-2xl p-8 shadow-sm flex flex-col">
               <div className="mb-6">
-                <h3 className="text-xl font-bold text-slate-900 mb-1">Basic</h3>
-                <p className="text-slate-500 text-sm">For individuals getting started</p>
+                <h3 className="text-xl font-bold text-[#0D0E12] mb-1">Basic</h3>
+                <p className="text-[#7C7C8A] text-sm">For individuals getting started</p>
               </div>
               <div className="mb-8">
-                <span className="text-5xl font-display font-extrabold text-slate-900">$0</span>
-                <span className="text-slate-500 text-base ml-1">/month</span>
+                <span className="text-5xl font-display font-extrabold text-[#0D0E12]">$0</span>
+                <span className="text-[#7C7C8A] text-base ml-1">/month</span>
               </div>
               <ul className="space-y-3 mb-8 flex-1">
                 {[
@@ -560,21 +550,21 @@ export default function LandingPage() {
                   "Balance & transaction checks",
                   "Standard support",
                 ].map((item) => (
-                  <li key={item} className="flex items-center gap-3 text-sm text-slate-600">
+                  <li key={item} className="flex items-center gap-3 text-sm text-[#3C3C4A]">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                     {item}
                   </li>
                 ))}
               </ul>
               <Link href="/register">
-                <Button variant="outline" className="w-full border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl h-11">
+                <Button variant="outline" className="w-full border-[#D6CFC5] text-[#2C2C35] hover:bg-[#F0ECE5] rounded-xl h-11">
                   Start Free
                 </Button>
               </Link>
             </div>
 
             {/* Plus */}
-            <div className="bg-blue-700 rounded-2xl p-8 shadow-xl relative overflow-hidden flex flex-col">
+            <div className="bg-[#1D4ED8] rounded-2xl p-8 shadow-xl relative overflow-hidden flex flex-col">
               <div className="absolute top-4 right-4 bg-white/15 text-white text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1">
                 <Star className="w-3 h-3" /> POPULAR
               </div>
@@ -601,7 +591,7 @@ export default function LandingPage() {
                 ))}
               </ul>
               <Link href="/register">
-                <Button className="w-full bg-white text-blue-700 hover:bg-blue-50 rounded-xl h-11 font-semibold shadow-sm">
+                <Button className="w-full bg-white text-[#1D4ED8] hover:bg-[#EBF2FF] rounded-xl h-11 font-semibold shadow-sm">
                   Get Plus
                 </Button>
               </Link>
@@ -613,11 +603,11 @@ export default function LandingPage() {
               <div className="relative">
                 <div className="mb-6">
                   <h3 className="text-xl font-bold text-white mb-1">Pro</h3>
-                  <p className="text-slate-400 text-sm">For power users who want full control</p>
+                  <p className="text-[#9A9AA8] text-sm">For power users who want full control</p>
                 </div>
                 <div className="mb-8">
                   <span className="text-5xl font-display font-extrabold text-white">$9</span>
-                  <span className="text-slate-400 text-base ml-1">/month</span>
+                  <span className="text-[#9A9AA8] text-base ml-1">/month</span>
                 </div>
                 <ul className="space-y-3 mb-8 flex-1">
                   {[
@@ -646,34 +636,34 @@ export default function LandingPage() {
       </section>
 
       {/* ── FAQ ── */}
-      <section className="py-24 bg-white border-t border-slate-100" id="faq">
+      <section className="py-24 bg-[#FAFAF7] border-t border-[#EDE8E0]" id="faq">
         <div className="container mx-auto px-4 md:px-6">
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
+            <div className="inline-block text-xs font-bold uppercase tracking-widest text-[#1D4ED8] bg-[#EBF2FF] px-3 py-1.5 rounded-full mb-4">
               FAQ
             </div>
-            <h2 className="text-3xl md:text-4xl font-display font-bold text-slate-900 mb-4">
+            <h2 className="text-3xl md:text-4xl font-display font-bold text-[#0D0E12] mb-4">
               Common questions
             </h2>
-            <p className="text-slate-500 text-lg">
+            <p className="text-[#7C7C8A] text-lg">
               Everything you need to know about Text Banks.
             </p>
           </div>
 
           <div className="max-w-2xl mx-auto space-y-3">
             {FAQ_ITEMS.map((item, i) => (
-              <div key={i} className="border border-slate-200 rounded-xl overflow-hidden">
+              <div key={i} className="border border-[#E5E0D8] rounded-xl overflow-hidden">
                 <button
-                  className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-slate-50 transition-colors"
+                  className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-[#F0ECE5] transition-colors"
                   onClick={() => setOpenFaq(openFaq === i ? null : i)}
                 >
-                  <span className="font-semibold text-slate-900 text-sm pr-4">{item.q}</span>
+                  <span className="font-semibold text-[#0D0E12] text-sm pr-4">{item.q}</span>
                   <ChevronDown
-                    className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${openFaq === i ? "rotate-180" : ""}`}
+                    className={`w-4 h-4 text-[#9A9AA8] shrink-0 transition-transform ${openFaq === i ? "rotate-180" : ""}`}
                   />
                 </button>
                 {openFaq === i && (
-                  <div className="px-6 pb-5 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-4">
+                  <div className="px-6 pb-5 text-sm text-[#3C3C4A] leading-relaxed border-t border-[#EDE8E0] pt-4">
                     {item.a}
                   </div>
                 )}
@@ -684,17 +674,17 @@ export default function LandingPage() {
       </section>
 
       {/* ── Contact ── */}
-      <section className="py-24 bg-slate-50 border-t border-slate-200" id="contact">
+      <section className="py-24 bg-[#F8F6F2] border-t border-[#E5E0D8]" id="contact">
         <div className="container mx-auto px-4 md:px-6">
           <div className="max-w-xl mx-auto">
             <div className="text-center mb-10">
-              <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
+              <div className="inline-block text-xs font-bold uppercase tracking-widest text-[#1D4ED8] bg-[#EBF2FF] px-3 py-1.5 rounded-full mb-4">
                 Contact
               </div>
-              <h2 className="text-3xl md:text-4xl font-display font-bold text-slate-900 mb-4">
+              <h2 className="text-3xl md:text-4xl font-display font-bold text-[#0D0E12] mb-4">
                 Get in touch
               </h2>
-              <p className="text-slate-500">
+              <p className="text-[#7C7C8A]">
                 Have a question, feedback, or want to report a bug? We'd love to hear from you.
               </p>
             </div>
@@ -706,8 +696,8 @@ export default function LandingPage() {
                 className="bg-emerald-50 border border-emerald-200 rounded-2xl p-10 text-center"
               >
                 <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
-                <h3 className="text-lg font-bold text-slate-900 mb-2">Message received!</h3>
-                <p className="text-slate-500 text-sm">We'll get back to you within 24 hours.</p>
+                <h3 className="text-lg font-bold text-[#0D0E12] mb-2">Message received!</h3>
+                <p className="text-[#7C7C8A] text-sm">We'll get back to you within 24 hours.</p>
                 <button
                   className="mt-5 text-sm text-blue-600 hover:underline"
                   onClick={() => setContactStatus("idle")}
@@ -716,15 +706,15 @@ export default function LandingPage() {
                 </button>
               </motion.div>
             ) : (
-              <form onSubmit={handleContact} className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm space-y-5">
+              <form onSubmit={handleContact} className="bg-white border border-[#E5E0D8] rounded-2xl p-8 shadow-sm space-y-5">
                 <div className="grid sm:grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">Name *</label>
+                    <label className="block text-xs font-semibold text-[#2C2C35] mb-1.5">Name *</label>
                     <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9A9AA8]" />
                       <Input
                         placeholder="Your name"
-                        className="pl-9 rounded-xl border-slate-200 h-11"
+                        className="pl-9 rounded-xl border-[#E5E0D8] h-11"
                         value={contactForm.name}
                         onChange={(e) => setContactForm((f) => ({ ...f, name: e.target.value }))}
                         required
@@ -732,13 +722,13 @@ export default function LandingPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">Email</label>
+                    <label className="block text-xs font-semibold text-[#2C2C35] mb-1.5">Email</label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9A9AA8]" />
                       <Input
                         type="email"
                         placeholder="your@email.com"
-                        className="pl-9 rounded-xl border-slate-200 h-11"
+                        className="pl-9 rounded-xl border-[#E5E0D8] h-11"
                         value={contactForm.email}
                         onChange={(e) => setContactForm((f) => ({ ...f, email: e.target.value }))}
                       />
@@ -746,12 +736,12 @@ export default function LandingPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Message *</label>
+                  <label className="block text-xs font-semibold text-[#2C2C35] mb-1.5">Message *</label>
                   <div className="relative">
-                    <MessageCircle className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <MessageCircle className="absolute left-3 top-3 w-4 h-4 text-[#9A9AA8]" />
                     <Textarea
                       placeholder="Tell us what's on your mind…"
-                      className="pl-9 rounded-xl border-slate-200 min-h-[120px]"
+                      className="pl-9 rounded-xl border-[#E5E0D8] min-h-[120px]"
                       value={contactForm.message}
                       onChange={(e) => setContactForm((f) => ({ ...f, message: e.target.value }))}
                       required
@@ -777,23 +767,22 @@ export default function LandingPage() {
       </section>
 
       {/* ── Final CTA ── */}
-      <section className="py-20 bg-slate-900 text-white relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-slate-900 to-slate-900" />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-blue-600/10 rounded-full blur-3xl" />
+      <section className="py-20 bg-[#0B0C0F] text-white relative overflow-hidden">
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMiI+PHBhdGggZD0iTTM2IDM0di00aC0ydjRoLTR2Mmg0djRoMnYtNGg0di0yaC00em0wLTMwVjBoLTJ2NGgtNHYyaDR2NGgyVjZoNFY0aC00ek02IDM0di00SDR2NEgwdjJoNHY0aDJ2LTRoNHYtMkg2ek02IDRWMEg0djRIMHYyaDR2NGgyVjZoNFY0SDZ6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-40" />
         <div className="container mx-auto px-4 md:px-6 text-center relative z-10">
-          <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
+          <h2 className="text-3xl md:text-4xl font-display font-bold mb-4 text-white">
             Ready to get started?
           </h2>
-          <p className="text-slate-400 text-lg mb-8 max-w-xl mx-auto">
+          <p className="text-white/40 text-lg mb-8 max-w-xl mx-auto">
             Register in under two minutes and start checking your balance by text today.
           </p>
           <Link href="/register">
             <Button
               size="lg"
-              className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-10 h-13 text-base font-semibold shadow-lg shadow-blue-900/40 group"
+              className="bg-[#2563EB] hover:bg-[#1D58D8] text-white rounded-lg px-8 h-11 text-sm font-semibold border-0 group"
             >
               Create Your Account
-              <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+              <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-0.5 transition-transform" />
             </Button>
           </Link>
         </div>
