@@ -26,79 +26,44 @@ import { PublicLayout } from "@/components/layout/PublicLayout";
 
 const SI_CDN = "https://cdn.jsdelivr.net/npm/simple-icons@v11/icons";
 
-const BANK_LOGOS: { name: string; domain: string; color: string; icon?: string }[] = [
-  { name: "Chase",            domain: "chase.com",            color: "#117ACA", icon: "chase" },
-  { name: "Bank of America",  domain: "bankofamerica.com",    color: "#E31837", icon: "bankofamerica" },
-  { name: "Wells Fargo",      domain: "wellsfargo.com",       color: "#D71E28", icon: "wellsfargo" },
-  { name: "Citibank",         domain: "citi.com",             color: "#003B70" },
-  { name: "Capital One",      domain: "capitalone.com",       color: "#CC0000" },
-  { name: "US Bank",          domain: "usbank.com",           color: "#0071CE" },
-  { name: "TD Bank",          domain: "td.com",               color: "#34B233" },
-  { name: "PNC Bank",         domain: "pnc.com",              color: "#F38400" },
-  { name: "Discover",         domain: "discover.com",         color: "#F76619", icon: "discover" },
-  { name: "American Express", domain: "americanexpress.com",  color: "#007BC1", icon: "americanexpress" },
-  { name: "Goldman Sachs",    domain: "gs.com",               color: "#6699CC", icon: "goldmansachs" },
-  { name: "Ally Bank",        domain: "ally.com",             color: "#7D2B8B" },
-  { name: "Charles Schwab",   domain: "schwab.com",           color: "#006DB3" },
-  { name: "Fidelity",         domain: "fidelity.com",         color: "#65B32E" },
-  { name: "Vanguard",         domain: "vanguard.com",         color: "#8B0000" },
-  { name: "SoFi",             domain: "sofi.com",             color: "#00A2D4" },
-  { name: "USAA",             domain: "usaa.com",             color: "#00406B" },
-  { name: "Navy Federal",     domain: "navyfederal.org",      color: "#003F87" },
-  { name: "Truist",           domain: "truist.com",           color: "#5C068C" },
-  { name: "Fifth Third",      domain: "53.com",               color: "#1B4F72" },
-  { name: "Regions Bank",     domain: "regions.com",          color: "#007B40" },
-  { name: "KeyBank",          domain: "key.com",              color: "#CC0000" },
-  { name: "Huntington",       domain: "huntington.com",       color: "#00843D" },
-  { name: "Citizens Bank",    domain: "citizensbank.com",     color: "#007A4C" },
-  { name: "BMO",              domain: "bmo.com",              color: "#0079C1" },
-  { name: "Chime",            domain: "chime.com",            color: "#1EC677" },
-  { name: "Robinhood",        domain: "robinhood.com",        color: "#00C805", icon: "robinhood" },
-  { name: "PayPal",           domain: "paypal.com",           color: "#003087", icon: "paypal" },
-  { name: "Venmo",            domain: "venmo.com",            color: "#008CFF", icon: "venmo" },
-  { name: "Cash App",         domain: "cash.app",             color: "#00D64F", icon: "cashapp" },
-  { name: "Revolut",          domain: "revolut.com",          color: "#0075EB", icon: "revolut" },
-  { name: "Visa",             domain: "visa.com",             color: "#1A1F71", icon: "visa" },
-  { name: "Mastercard",       domain: "mastercard.com",       color: "#EB001B", icon: "mastercard" },
-  { name: "Wealthfront",      domain: "wealthfront.com",      color: "#006B54" },
-  { name: "Betterment",       domain: "betterment.com",       color: "#0083CF" },
-  { name: "Klarna",           domain: "klarna.com",           color: "#FFB3C7", icon: "klarna" },
+const BANK_LOGOS: { name: string; color: string; icon: string }[] = [
+  { name: "Chase",            color: "#117ACA", icon: "chase" },
+  { name: "Bank of America",  color: "#E31837", icon: "bankofamerica" },
+  { name: "Wells Fargo",      color: "#D71E28", icon: "wellsfargo" },
+  { name: "Discover",         color: "#F76619", icon: "discover" },
+  { name: "American Express", color: "#007BC1", icon: "americanexpress" },
+  { name: "Goldman Sachs",    color: "#375EA2", icon: "goldmansachs" },
+  { name: "PayPal",           color: "#003087", icon: "paypal" },
+  { name: "Venmo",            color: "#008CFF", icon: "venmo" },
+  { name: "Cash App",         color: "#00D64F", icon: "cashapp" },
+  { name: "Revolut",          color: "#0075EB", icon: "revolut" },
+  { name: "Robinhood",        color: "#00C805", icon: "robinhood" },
+  { name: "Visa",             color: "#1A1F71", icon: "visa" },
+  { name: "Mastercard",       color: "#EB001B", icon: "mastercard" },
+  { name: "Klarna",           color: "#FF69A5", icon: "klarna" },
+  { name: "Stripe",           color: "#635BFF", icon: "stripe" },
+  { name: "Zelle",            color: "#6D1ED4", icon: "zelle" },
+  { name: "Google Pay",       color: "#4285F4", icon: "googlepay" },
+  { name: "Monzo",            color: "#E4465E", icon: "monzo" },
+  { name: "N26",              color: "#00C896", icon: "n26" },
 ];
 
 function BankLogoIcon({ bank }: { bank: typeof BANK_LOGOS[0] }) {
-  if (bank.icon) {
-    return (
-      <div
-        className="w-7 h-7 shrink-0"
-        style={{
-          backgroundColor: bank.color,
-          maskImage: `url(${SI_CDN}/${bank.icon}.svg)`,
-          maskRepeat: "no-repeat",
-          maskPosition: "center",
-          maskSize: "contain",
-          WebkitMaskImage: `url(${SI_CDN}/${bank.icon}.svg)`,
-          WebkitMaskRepeat: "no-repeat",
-          WebkitMaskPosition: "center",
-          WebkitMaskSize: "contain",
-        } as React.CSSProperties}
-      />
-    );
-  }
   return (
-    <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 flex items-center justify-center bg-slate-50 border border-slate-100">
-      <img
-        src={`https://logo.clearbit.com/${bank.domain}?size=64`}
-        alt={bank.name}
-        className="w-7 h-7 object-contain"
-        onError={(e) => {
-          const target = e.currentTarget;
-          target.style.display = "none";
-          const parent = target.parentElement!;
-          parent.style.backgroundColor = bank.color;
-          parent.innerHTML = `<span style="color:white;font-size:10px;font-weight:700;line-height:1">${bank.name.slice(0, 2).toUpperCase()}</span>`;
-        }}
-      />
-    </div>
+    <div
+      className="w-7 h-7 shrink-0"
+      style={{
+        backgroundColor: bank.color,
+        maskImage: `url(${SI_CDN}/${bank.icon}.svg)`,
+        maskRepeat: "no-repeat",
+        maskPosition: "center",
+        maskSize: "contain",
+        WebkitMaskImage: `url(${SI_CDN}/${bank.icon}.svg)`,
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskPosition: "center",
+        WebkitMaskSize: "contain",
+      } as React.CSSProperties}
+    />
   );
 }
 
