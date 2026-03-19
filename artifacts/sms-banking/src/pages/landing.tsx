@@ -643,35 +643,38 @@ export default function LandingPage() {
             </div>
 
             {/* Pro */}
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 shadow-xl flex flex-col">
-              <div className="mb-6">
-                <h3 className="text-xl font-bold text-white mb-1">Pro</h3>
-                <p className="text-slate-400 text-sm">For power users and families</p>
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 shadow-xl flex flex-col relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-emerald-900/30 via-transparent to-transparent pointer-events-none" />
+              <div className="relative">
+                <div className="mb-6">
+                  <h3 className="text-xl font-bold text-white mb-1">Pro</h3>
+                  <p className="text-slate-400 text-sm">For power users who want full control</p>
+                </div>
+                <div className="mb-8">
+                  <span className="text-5xl font-display font-extrabold text-white">$9</span>
+                  <span className="text-slate-400 text-base ml-1">/month</span>
+                </div>
+                <ul className="space-y-3 mb-8 flex-1">
+                  {[
+                    { label: "Real-time dashboard — total balance & credit debt across all accounts" },
+                    { label: "AI spending breakdown by category (gas, food, home, etc.) — today & this month" },
+                    { label: "Edit & create custom spending categories" },
+                    { label: "Proactive SMS alerts — low balance, credit limit near max, transfer cleared & more" },
+                    { label: "Unlimited linked accounts & SMS queries" },
+                    { label: "Multi-number support" },
+                  ].map(({ label }) => (
+                    <li key={label} className="flex items-start gap-3 text-sm text-slate-300">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      {label}
+                    </li>
+                  ))}
+                </ul>
+                <Link href="/register">
+                  <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl h-11 font-semibold shadow-sm">
+                    Go Pro
+                  </Button>
+                </Link>
               </div>
-              <div className="mb-8">
-                <span className="text-5xl font-display font-extrabold text-white">$9</span>
-                <span className="text-slate-400 text-base ml-1">/month</span>
-              </div>
-              <ul className="space-y-3 mb-8 flex-1">
-                {[
-                  "Unlimited linked accounts",
-                  "Unlimited SMS queries",
-                  "AI spending insights",
-                  "Custom account nicknames",
-                  "Multi-number support",
-                  "White-glove onboarding",
-                ].map((item) => (
-                  <li key={item} className="flex items-center gap-3 text-sm text-slate-300">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <Link href="/register">
-                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-11 font-semibold shadow-sm">
-                  Go Pro
-                </Button>
-              </Link>
             </div>
           </div>
         </div>
