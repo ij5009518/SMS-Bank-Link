@@ -2529,6 +2529,18 @@ export default function MyAccountPage() {
         )}
       </AnimatePresence>
 
+      {/* ── Floating Report Bug Button ── */}
+      {!showReportBug && (
+        <button
+          onClick={() => setShowReportBug(true)}
+          className="fixed bottom-5 right-5 z-50 flex items-center gap-2 bg-white border border-[#E5E0D8] text-[#5C5C6B] hover:text-[#0D0E12] hover:border-[#C8C0B5] hover:shadow-md shadow-sm rounded-full px-3.5 py-2 text-xs font-medium transition-all duration-150"
+          title="Report a bug"
+        >
+          <Bug className="w-3.5 h-3.5 text-red-400" />
+          Report a bug
+        </button>
+      )}
+
       {/* ── Report Bug Modal ── */}
       <AnimatePresence>
         {showReportBug && (
