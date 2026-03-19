@@ -23,6 +23,9 @@ import {
   RefreshCw,
   Check,
   Mail,
+  Plus,
+  Trash2,
+  Smartphone,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -132,7 +135,7 @@ export default function MyAccountPage() {
   const [smsOptedIn, setSmsOptedIn] = useState(true);
   const [selectedPlan, setSelectedPlan] = useState<"basic" | "premium">("basic");
 
-  // Phone management state
+  // Phone management state (primary number)
   type PhoneSection = "view" | "reverify-otp" | "change-request" | "change-otp";
   const [phoneSection, setPhoneSection] = useState<PhoneSection>("view");
   const [phoneOtp, setPhoneOtp] = useState("");
@@ -140,6 +143,19 @@ export default function MyAccountPage() {
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [phoneSuccess, setPhoneSuccess] = useState<string | null>(null);
+
+  // Linked phones (secondary numbers — premium)
+  type LinkedPhone = { id: number; phoneNumber: string; label: string | null; verified: boolean };
+  const [linkedPhones, setLinkedPhones] = useState<LinkedPhone[]>([]);
+  const [linkedPhonesLoading, setLinkedPhonesLoading] = useState(false);
+  const [addPhoneStep, setAddPhoneStep] = useState<"idle" | "form" | "verify">("idle");
+  const [addPhoneNumber, setAddPhoneNumber] = useState("");
+  const [addPhoneLabel, setAddPhoneLabel] = useState("");
+  const [addPhoneId, setAddPhoneId] = useState<number | null>(null);
+  const [addPhoneOtp, setAddPhoneOtp] = useState("");
+  const [addPhoneLoading, setAddPhoneLoading] = useState(false);
+  const [addPhoneError, setAddPhoneError] = useState<string | null>(null);
+  const [addPhoneSuccess, setAddPhoneSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     const s = getSession();
@@ -177,6 +193,30 @@ export default function MyAccountPage() {
   }, []);
 
   const { data: freshUser } = useGetUser(session?.id ?? 0, { query: { enabled: !!session, refetchInterval: 60000 } });
+
+  // Sync plan from DB whenever freshUser loads
+  useEffect(() => {
+    const fp = freshUser as { plan?: string } | undefined;
+    if (fp?.plan === "basic" || fp?.plan === "premium") {
+      setSelectedPlan(fp.plan as "basic" | "premium");
+    }
+  }, [freshUser]);
+
+  // Fetch linked (secondary) phones when session is available
+  const fetchLinkedPhones = async () => {
+    if (!session) return;
+    setLinkedPhonesLoading(true);
+    try {
+      const res = await fetch(`/api/users/${session.id}/phones`);
+      if (res.ok) setLinkedPhones(await res.json());
+    } catch { /* noop */ } finally { setLinkedPhonesLoading(false); }
+  };
+
+  useEffect(() => {
+    if (session?.id) fetchLinkedPhones();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id]);
+
   const { data: transactions, refetch: refetchTransactions } = useGetUserTransactions(session?.id ?? 0, {}, { query: { enabled: !!session, refetchInterval: 60000 } });
   const { data: smsLogs } = useGetSmsLogs({ userId: session?.id, limit: 20 }, { query: { enabled: !!session, refetchInterval: 15000 } });
 
@@ -327,7 +367,7 @@ export default function MyAccountPage() {
     try {
       const res = await fetch(`/api/users/${session.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firstName: editFirstName, lastName: editLastName, optedOut: !smsOptedIn }),
+        body: JSON.stringify({ firstName: editFirstName, lastName: editLastName, optedOut: !smsOptedIn, plan: selectedPlan }),
       });
       const data = await res.json();
       if (!res.ok) { setSettingsError(data.message || "Settings update failed."); return; }
@@ -338,6 +378,61 @@ export default function MyAccountPage() {
       setTimeout(() => setSettingsSaved(false), 3000);
     } catch { setSettingsError("Network error. Please try again."); }
     finally { setSettingsSaving(false); }
+  };
+
+  // ── Linked Phone Handlers ──
+  const handleAddPhone = async () => {
+    if (!session) return;
+    setAddPhoneLoading(true); setAddPhoneError(null);
+    try {
+      const res = await fetch(`/api/users/${session.id}/phones`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phoneNumber: addPhoneNumber, label: addPhoneLabel }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAddPhoneError(data.message || "Failed to add phone."); return; }
+      setAddPhoneId(data.id);
+      setAddPhoneStep("verify");
+      setAddPhoneOtp("");
+    } catch { setAddPhoneError("Network error. Please try again."); }
+    finally { setAddPhoneLoading(false); }
+  };
+
+  const handleVerifyLinkedPhone = async () => {
+    if (!session || addPhoneId === null) return;
+    setAddPhoneLoading(true); setAddPhoneError(null);
+    try {
+      const res = await fetch(`/api/users/${session.id}/phones/${addPhoneId}/verify`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: addPhoneOtp }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAddPhoneError(data.message || "Invalid code."); return; }
+      setAddPhoneStep("idle"); setAddPhoneNumber(""); setAddPhoneLabel(""); setAddPhoneId(null); setAddPhoneOtp("");
+      setAddPhoneSuccess("Phone number linked and verified.");
+      setTimeout(() => setAddPhoneSuccess(null), 5000);
+      await fetchLinkedPhones();
+    } catch { setAddPhoneError("Network error. Please try again."); }
+    finally { setAddPhoneLoading(false); }
+  };
+
+  const handleResendLinkedPhoneOtp = async () => {
+    if (!session || addPhoneId === null) return;
+    setAddPhoneLoading(true); setAddPhoneError(null);
+    try {
+      const res = await fetch(`/api/users/${session.id}/phones/${addPhoneId}/resend`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) setAddPhoneError(data.message || "Failed to resend.");
+    } catch { setAddPhoneError("Network error."); }
+    finally { setAddPhoneLoading(false); }
+  };
+
+  const handleRemoveLinkedPhone = async (phoneId: number) => {
+    if (!session) return;
+    try {
+      const res = await fetch(`/api/users/${session.id}/phones/${phoneId}`, { method: "DELETE" });
+      if (res.ok) setLinkedPhones((prev) => prev.filter((p) => p.id !== phoneId));
+    } catch { /* noop */ }
   };
 
   // ── Phone Management ──
@@ -1258,6 +1353,169 @@ export default function MyAccountPage() {
                         </div>
                       </div>
 
+                      {/* Linked Phone Numbers (Premium) */}
+                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                          <div>
+                            <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                              <Smartphone className="w-4 h-4 text-slate-500" /> Linked Phone Numbers
+                              <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5">Premium</span>
+                            </h3>
+                            <p className="text-xs text-slate-400 mt-0.5">Text bank commands from any linked number</p>
+                          </div>
+                        </div>
+                        <div className="p-6 space-y-4">
+                          {selectedPlan !== "premium" ? (
+                            <div className="flex flex-col items-center text-center p-6 bg-gradient-to-b from-blue-50 to-slate-50 rounded-xl border border-blue-100 space-y-3">
+                              <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center">
+                                <Smartphone className="w-6 h-6 text-blue-600" />
+                              </div>
+                              <div>
+                                <p className="font-bold text-slate-900 text-sm">Multiple Phones</p>
+                                <p className="text-xs text-slate-500 mt-1">Upgrade to Premium to link additional numbers — family members or backup phones can all access your account.</p>
+                              </div>
+                              <button
+                                onClick={() => { setSelectedPlan("premium"); window.scrollTo({ top: 9999, behavior: "smooth" }); }}
+                                className="text-xs font-semibold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl px-4 py-2 transition-colors"
+                              >
+                                Upgrade to Premium
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              {/* Success banner */}
+                              {addPhoneSuccess && (
+                                <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />{addPhoneSuccess}
+                                </div>
+                              )}
+                              {addPhoneError && (
+                                <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />{addPhoneError}
+                                </div>
+                              )}
+
+                              {/* List of existing secondary phones */}
+                              {linkedPhonesLoading ? (
+                                <div className="flex items-center justify-center py-4 text-xs text-slate-400 gap-2">
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading…
+                                </div>
+                              ) : linkedPhones.length === 0 && addPhoneStep === "idle" ? (
+                                <div className="text-xs text-slate-400 text-center py-3">No additional numbers linked yet.</div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {linkedPhones.map((p) => (
+                                    <div key={p.id} className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                                      <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-mono font-semibold text-slate-800 truncate">
+                                          {p.phoneNumber.replace(/(\d{1})(\d{3})(\d{3})(\d{4})/, "+$1 ($2) $3-$4")}
+                                        </p>
+                                        {p.label && <p className="text-[10px] text-slate-400">{p.label}</p>}
+                                      </div>
+                                      {p.verified
+                                        ? <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 shrink-0">Verified</span>
+                                        : <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 shrink-0">Unverified</span>
+                                      }
+                                      <button
+                                        onClick={() => handleRemoveLinkedPhone(p.id)}
+                                        className="w-7 h-7 flex items-center justify-center rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                                        title="Remove"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Add number flow */}
+                              {addPhoneStep === "idle" && (
+                                <button
+                                  onClick={() => { setAddPhoneStep("form"); setAddPhoneError(null); setAddPhoneNumber(""); setAddPhoneLabel(""); }}
+                                  className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 border-dashed rounded-xl h-10 transition-colors"
+                                >
+                                  <Plus className="w-3.5 h-3.5" /> Add Phone Number
+                                </button>
+                              )}
+
+                              {addPhoneStep === "form" && (
+                                <div className="space-y-3 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                                  <p className="text-xs text-slate-600 font-medium">Enter the new number. We'll send a 6-digit code to verify it.</p>
+                                  <div className="space-y-2">
+                                    <div className="relative">
+                                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                      <Input
+                                        value={addPhoneNumber}
+                                        onChange={(e) => setAddPhoneNumber(e.target.value)}
+                                        placeholder="+1 (555) 000-0000"
+                                        className="pl-9 h-10 border-slate-200 rounded-xl text-sm"
+                                      />
+                                    </div>
+                                    <Input
+                                      value={addPhoneLabel}
+                                      onChange={(e) => setAddPhoneLabel(e.target.value)}
+                                      placeholder="Label (optional — e.g. Mom's phone)"
+                                      className="h-10 border-slate-200 rounded-xl text-sm"
+                                    />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      className="flex-1 bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-9 text-xs font-semibold"
+                                      onClick={handleAddPhone}
+                                      disabled={addPhoneLoading || addPhoneNumber.replace(/\D/g, "").length < 10}
+                                    >
+                                      {addPhoneLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Send Code"}
+                                    </Button>
+                                    <Button variant="outline" className="rounded-xl h-9 text-xs border-slate-200"
+                                      onClick={() => { setAddPhoneStep("idle"); setAddPhoneError(null); }}>
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {addPhoneStep === "verify" && (
+                                <div className="space-y-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                                  <p className="text-xs text-blue-800 font-medium">
+                                    Enter the 6-digit code sent to <span className="font-mono font-bold">{addPhoneNumber}</span>:
+                                  </p>
+                                  <Input
+                                    value={addPhoneOtp}
+                                    onChange={(e) => setAddPhoneOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                    placeholder="000000"
+                                    className="h-10 border-blue-300 rounded-xl text-sm font-mono tracking-widest text-center"
+                                    maxLength={6}
+                                  />
+                                  <div className="flex gap-2">
+                                    <Button
+                                      className="flex-1 bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-9 text-xs font-semibold"
+                                      onClick={handleVerifyLinkedPhone}
+                                      disabled={addPhoneLoading || addPhoneOtp.length !== 6}
+                                    >
+                                      {addPhoneLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Verify & Link"}
+                                    </Button>
+                                    <Button variant="outline" className="rounded-xl h-9 text-xs border-slate-200"
+                                      onClick={() => { setAddPhoneStep("form"); setAddPhoneOtp(""); setAddPhoneError(null); }}>
+                                      Back
+                                    </Button>
+                                  </div>
+                                  <button
+                                    onClick={handleResendLinkedPhoneOtp}
+                                    disabled={addPhoneLoading}
+                                    className="w-full text-center text-[11px] text-blue-600 hover:text-blue-800 font-medium transition-colors disabled:opacity-50"
+                                  >
+                                    Resend code
+                                  </button>
+                                </div>
+                              )}
+
+                              <p className="text-[10px] text-slate-400 text-center">Verified numbers can text any command and receive balance/transaction info just like the primary number.</p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
                       {/* SMS Preferences */}
                       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
                         <div className="px-6 py-4 border-b border-slate-100">
@@ -1319,8 +1577,8 @@ export default function MyAccountPage() {
                         <div className="p-6 space-y-4">
                           <div className="grid grid-cols-2 gap-3">
                             {([
-                              { key: "basic" as const, name: "Basic", price: "Free", features: ["2 accounts", "50 SMS/mo", "Standard support"] },
-                              { key: "premium" as const, name: "Premium", price: "$4/mo", features: ["Unlimited accounts", "Unlimited SMS", "Priority support"] },
+                              { key: "basic" as const, name: "Basic", price: "Free", features: ["2 accounts", "50 SMS/mo", "1 phone number", "Standard support"] },
+                              { key: "premium" as const, name: "Premium", price: "$4/mo", features: ["Unlimited accounts", "Unlimited SMS", "Multiple phone numbers", "Priority support"] },
                             ]).map((plan) => (
                               <button
                                 key={plan.key}

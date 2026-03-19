@@ -24,6 +24,7 @@ export const usersTable = pgTable("users", {
   emailVerificationTokenExpiry: timestamp("email_verification_token_expiry"),
   deviceVerificationCode: text("device_verification_code"),
   deviceVerificationExpiry: timestamp("device_verification_expiry"),
+  plan: text("plan").notNull().default("basic"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

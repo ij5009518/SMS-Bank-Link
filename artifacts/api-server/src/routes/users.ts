@@ -112,11 +112,12 @@ router.patch("/:userId", async (req, res) => {
     return res.status(400).json({ error: "bad_request", message: "Invalid user ID" });
   }
 
-  const { firstName, lastName, optedOut, onboardingStatus } = req.body as {
+  const { firstName, lastName, optedOut, onboardingStatus, plan } = req.body as {
     firstName?: string;
     lastName?: string;
     optedOut?: boolean;
     onboardingStatus?: string;
+    plan?: string;
   };
 
   const updates: Record<string, unknown> = {};
@@ -124,6 +125,7 @@ router.patch("/:userId", async (req, res) => {
   if (lastName !== undefined) updates.lastName = lastName;
   if (optedOut !== undefined) updates.optedOut = optedOut;
   if (onboardingStatus !== undefined) updates.onboardingStatus = onboardingStatus;
+  if (plan !== undefined && (plan === "basic" || plan === "premium")) updates.plan = plan;
 
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: "bad_request", message: "No fields to update" });

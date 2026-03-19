@@ -6,9 +6,10 @@ import {
   accountsTable,
   transactionsTable,
   tellerEnrollmentsTable,
+  phoneNumbersTable,
 } from "@workspace/db/schema";
 import { SimulateSmsBody } from "@workspace/api-zod";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { listAccounts, getBalance, listTransactions } from "../lib/teller.js";
 import { sendSms, normalizeE164, isConfigured } from "../lib/signalwire.js";
 
@@ -57,12 +58,32 @@ router.post("/webhook", async (req, res) => {
     const normalizedPhone = normalizeE164(from);
     const digitsOnly = from.replace(/\D/g, "").replace(/^1/, "");
 
-    // Find user by phone
+    // Find user by phone — check primary number first, then secondary linked numbers
     const allUsers = await db.select().from(usersTable);
-    const user = allUsers.find((u) => {
+    let user = allUsers.find((u) => {
       const uDigits = u.phoneNumber.replace(/\D/g, "").replace(/^1/, "");
       return uDigits === digitsOnly;
     });
+
+    if (!user) {
+      // Check secondary (linked) phone numbers
+      const secondary = await db.select().from(phoneNumbersTable)
+        .where(and(
+          eq(phoneNumbersTable.phoneNumber, normalizedPhone.replace(/\D/g, "")),
+          eq(phoneNumbersTable.verified, true)
+        ));
+      if (secondary.length > 0) {
+        user = allUsers.find((u) => u.id === secondary[0].userId);
+      }
+      if (!user) {
+        // Try digits-only match on secondary numbers
+        const allSecondary = await db.select().from(phoneNumbersTable).where(eq(phoneNumbersTable.verified, true));
+        const match = allSecondary.find((p) => p.phoneNumber.replace(/\D/g, "").replace(/^1/, "") === digitsOnly);
+        if (match) {
+          user = allUsers.find((u) => u.id === match.userId);
+        }
+      }
+    }
 
     if (!user) {
       console.warn(`[SMS Webhook] Unknown number: ${from}`);

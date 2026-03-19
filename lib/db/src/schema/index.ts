@@ -5,3 +5,4 @@ export * from "./sms_logs";
 export * from "./settings";
 export * from "./teller_enrollments";
 export * from "./trusted_devices";
+export * from "./phone_numbers";
