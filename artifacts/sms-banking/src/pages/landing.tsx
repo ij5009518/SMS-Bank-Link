@@ -23,7 +23,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { PublicLayout } from "@/components/layout/PublicLayout";
-import { useSimulateSms } from "@workspace/api-client-react";
 
 const SI_CDN = "https://cdn.jsdelivr.net/npm/simple-icons@v11/icons";
 
@@ -139,7 +138,7 @@ export default function LandingPage() {
   const [contactForm, setContactForm] = useState({ name: "", email: "", message: "" });
   const [contactStatus, setContactStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
-  const simulateMutation = useSimulateSms();
+  const [demoLoading, setDemoLoading] = useState(false);
 
   const handleContact = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,19 +163,27 @@ export default function LandingPage() {
 
   const handleSimulate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!demoInput.trim() || simulateMutation.isPending) return;
+    if (!demoInput.trim() || demoLoading) return;
     const userMsg = demoInput.trim();
     setDemoMessages((prev) => [...prev, { text: userMsg, isUser: true }]);
     setDemoInput("");
+    setDemoLoading(true);
     try {
-      const res = await simulateMutation.mutateAsync({ data: { userId: 1, command: userMsg } });
+      const res = await fetch("/api/sms/demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: userMsg }),
+      });
+      const data = await res.json() as { response: string };
       setTimeout(() => {
-        setDemoMessages((prev) => [...prev, { text: res.response, isUser: false }]);
-      }, 600);
+        setDemoMessages((prev) => [...prev, { text: data.response, isUser: false }]);
+        setDemoLoading(false);
+      }, 500);
     } catch {
       setTimeout(() => {
-        setDemoMessages((prev) => [...prev, { text: "Error. Please try again.", isUser: false }]);
-      }, 600);
+        setDemoMessages((prev) => [...prev, { text: "Something went wrong. Please try again.", isUser: false }]);
+        setDemoLoading(false);
+      }, 500);
     }
   };
 
@@ -293,7 +300,7 @@ export default function LandingPage() {
                           {msg.text}
                         </div>
                       ))}
-                      {simulateMutation.isPending && (
+                      {demoLoading && (
                         <div className="bg-slate-700 self-start rounded-2xl rounded-bl-sm px-3.5 py-2.5 flex gap-1">
                           <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" />
                           <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:0.1s]" />
@@ -311,11 +318,11 @@ export default function LandingPage() {
                         placeholder="Try BAL or TRANS…"
                         value={demoInput}
                         onChange={(e) => setDemoInput(e.target.value)}
-                        disabled={simulateMutation.isPending}
+                        disabled={demoLoading}
                       />
                       <button
                         type="submit"
-                        disabled={!demoInput.trim() || simulateMutation.isPending}
+                        disabled={!demoInput.trim() || demoLoading}
                         className="w-8 h-8 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 rounded-full flex items-center justify-center shrink-0 transition-colors"
                       >
                         <Send className="w-3.5 h-3.5 text-white" />

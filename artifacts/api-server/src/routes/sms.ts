@@ -158,6 +158,65 @@ router.post("/webhook", async (req, res) => {
   }
 });
 
+// Public landing-page demo — no auth, no userId, hardcoded virtual account
+router.post("/demo", (req, res) => {
+  const raw = (req.body as { command?: string }).command ?? "";
+  const cmd = raw.trim().toUpperCase();
+
+  const DEMO_ACCOUNTS = [
+    { nickname: "checking", type: "Checking", last4: "4521", bank: "Chase Bank", balance: 2847.50 },
+    { nickname: "savings",  type: "Savings",  last4: "8834", bank: "Chase Bank", balance: 12400.00 },
+  ];
+
+  const DEMO_TRANSACTIONS = [
+    { date: "Mar 18", desc: "Walmart Grocery",       amount: -127.43 },
+    { date: "Mar 16", desc: "Direct Deposit",         amount: +1850.00 },
+    { date: "Mar 14", desc: "Netflix",                amount: -17.99 },
+    { date: "Mar 13", desc: "Shell Gas Station",      amount: -62.40 },
+    { date: "Mar 11", desc: "Electric Bill",          amount: -98.20 },
+  ];
+
+  let response = "";
+
+  if (cmd === "HELP") {
+    response = "Text Banks Commands:\nBAL – All balances\nBAL [account] – One account\nTRANS – Last 5 transactions\nTRANS [n] – Last N transactions\nLAST – Most recent transaction\nSPEND – Monthly spend\nSTOP – Opt out\nSTART – Re-subscribe";
+  } else if (cmd === "BAL" || cmd.startsWith("BAL ")) {
+    const nick = cmd.slice(4).trim().toLowerCase();
+    if (nick) {
+      const acct = DEMO_ACCOUNTS.find((a) => a.nickname === nick);
+      if (acct) {
+        response = `${acct.nickname} (${acct.type} ••••${acct.last4}): $${acct.balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+      } else {
+        response = `No account named "${nick}". Try BAL checking or BAL savings.`;
+      }
+    } else {
+      const lines = DEMO_ACCOUNTS.map((a) => `${a.nickname} (${a.type} ••••${a.last4}): $${a.balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}`);
+      response = `Your Balances:\n${lines.join("\n")}`;
+    }
+  } else if (cmd === "TRANS" || cmd.startsWith("TRANS ")) {
+    const n = parseInt(cmd.slice(6).trim()) || 5;
+    const txns = DEMO_TRANSACTIONS.slice(0, Math.min(n, 5));
+    const fmt = (t: { date: string; desc: string; amount: number }) =>
+      `${t.date}  ${t.desc}: ${t.amount > 0 ? "+" : "-"}$${Math.abs(t.amount).toFixed(2)}`;
+    const lines = txns.map(fmt);
+    response = `Last ${txns.length} Transactions:\n${lines.join("\n")}`;
+  } else if (cmd === "LAST") {
+    const t = DEMO_TRANSACTIONS[0];
+    response = `Most Recent: ${t.date} ${t.desc} ${t.amount > 0 ? "+" : "-"}$${Math.abs(t.amount).toFixed(2)}`;
+  } else if (cmd === "SPEND") {
+    const spend = DEMO_TRANSACTIONS.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
+    response = `March spending so far: $${spend.toFixed(2)}`;
+  } else if (cmd === "STOP") {
+    response = "This is a demo — opt-out is disabled. In the real app, texting STOP would unsubscribe you instantly.";
+  } else if (cmd === "") {
+    response = "Please enter a command. Try BAL, TRANS, or HELP.";
+  } else {
+    response = `Unknown command: "${raw}". Reply HELP for the full list.`;
+  }
+
+  res.json({ command: cmd, response });
+});
+
 // Simulate SMS (for testing via dashboard — still sends real SMS if configured)
 router.post("/simulate", async (req, res) => {
   try {
