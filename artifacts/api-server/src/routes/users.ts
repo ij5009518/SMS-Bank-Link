@@ -125,7 +125,7 @@ router.patch("/:userId", async (req, res) => {
   if (lastName !== undefined) updates.lastName = lastName.trim().replace(/\b\w/g, (c: string) => c.toUpperCase());
   if (optedOut !== undefined) updates.optedOut = optedOut;
   if (onboardingStatus !== undefined) updates.onboardingStatus = onboardingStatus;
-  if (plan !== undefined && (plan === "basic" || plan === "premium")) updates.plan = plan;
+  if (plan !== undefined && (plan === "basic" || plan === "pro" || plan === "premium")) updates.plan = plan;
 
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: "bad_request", message: "No fields to update" });

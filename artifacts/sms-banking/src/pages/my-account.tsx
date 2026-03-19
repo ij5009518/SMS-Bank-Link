@@ -41,6 +41,8 @@ import {
   ArrowRightLeft,
   Landmark,
   Save,
+  Crown,
+  Star,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -205,7 +207,7 @@ export default function MyAccountPage() {
   const [editFirstName, setEditFirstName] = useState("");
   const [editLastName, setEditLastName] = useState("");
   const [smsOptedIn, setSmsOptedIn] = useState(true);
-  const [selectedPlan, setSelectedPlan] = useState<"basic" | "premium">("basic");
+  const [selectedPlan, setSelectedPlan] = useState<"basic" | "pro" | "premium">("basic");
 
   // Phone management state (primary number)
   type PhoneSection = "view" | "reverify-otp" | "change-request" | "change-otp";
@@ -269,8 +271,8 @@ export default function MyAccountPage() {
   // Sync plan from DB whenever freshUser loads
   useEffect(() => {
     const fp = freshUser as { plan?: string } | undefined;
-    if (fp?.plan === "basic" || fp?.plan === "premium") {
-      setSelectedPlan(fp.plan as "basic" | "premium");
+    if (fp?.plan === "basic" || fp?.plan === "pro" || fp?.plan === "premium") {
+      setSelectedPlan(fp.plan as "basic" | "pro" | "premium");
     }
   }, [freshUser]);
 
@@ -880,11 +882,11 @@ export default function MyAccountPage() {
       .catch(() => {});
   }, [session]);
 
-  const navItems: { key: Section; label: string; icon: typeof Building2 }[] = [
+  const navItems: { key: Section; label: string; icon: typeof Building2; pro?: boolean }[] = [
     { key: "accounts", label: "Accounts", icon: Building2 },
     { key: "activity", label: "Transactions", icon: CreditCard },
-    { key: "spend", label: "Spending", icon: PieChart },
-    { key: "alerts", label: "Alerts", icon: Bell },
+    { key: "spend", label: "Spending", icon: PieChart, pro: true },
+    { key: "alerts", label: "Alerts", icon: Bell, pro: true },
     { key: "sms", label: "SMS", icon: MessageSquare },
     { key: "settings", label: "Settings", icon: Settings },
   ];
@@ -1150,34 +1152,30 @@ export default function MyAccountPage() {
           {/* ── Dashboard ── */}
           {session && (
             <motion.div key="dashboard" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
-              {/* Header */}
-              <div className="bg-slate-900 text-white">
-                <div className="container mx-auto px-4 md:px-6 py-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-11 h-11 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-lg">
+              {/* Clean top bar */}
+              <div className="bg-white border-b border-[#E5E0D8] sticky top-0 z-30">
+                <div className="container mx-auto px-4 md:px-6 max-w-3xl">
+                  <div className="flex items-center justify-between h-14">
+                    {/* Left: avatar + name */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
                         {session.firstName[0]}{session.lastName[0]}
                       </div>
                       <div>
-                        <h1 className="text-lg font-bold text-white">{session.firstName} {session.lastName}</h1>
-                        <div className="flex items-center gap-2">
-                          <Phone className="w-3.5 h-3.5 text-[#9A9AA8]" />
-                          <span className="text-sm text-[#9A9AA8]">{session.phoneNumber}</span>
-                          <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full border", statusConfig(session.onboardingStatus).cls)}>
-                            {statusConfig(session.onboardingStatus).label}
-                          </span>
-                        </div>
+                        <p className="text-sm font-semibold text-[#0D0E12] leading-none">{session.firstName} {session.lastName}</p>
+                        <p className="text-[11px] text-[#9A9AA8] mt-0.5">{session.phoneNumber}</p>
                       </div>
+                      <span className={cn("hidden sm:inline text-[10px] font-semibold px-2 py-0.5 rounded-full border", statusConfig(session.onboardingStatus).cls)}>
+                        {statusConfig(session.onboardingStatus).label}
+                      </span>
                     </div>
+                    {/* Right: profile dropdown */}
                     <div className="relative" ref={profileMenuRef}>
                       <button
                         onClick={() => setShowProfileMenu((v) => !v)}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                        className="flex items-center gap-1.5 text-[#7C7C8A] hover:text-[#0D0E12] transition-colors px-2 py-1.5 rounded-lg hover:bg-[#F8F6F2]"
                       >
-                        <div className="w-7 h-7 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                          {session.firstName[0]}{session.lastName[0]}
-                        </div>
-                        <ChevronDown className="w-3.5 h-3.5" />
+                        <ChevronDown className="w-4 h-4" />
                       </button>
                       <AnimatePresence>
                         {showProfileMenu && (
@@ -1219,33 +1217,10 @@ export default function MyAccountPage() {
                       </AnimatePresence>
                     </div>
                   </div>
-
-                  {/* Quick stats */}
-                  <div className="grid grid-cols-3 gap-4 mt-6">
-                    <div className="bg-slate-800/60 rounded-xl p-4 border border-slate-700/50">
-                      <p className="text-xs text-[#9A9AA8] mb-1">Linked Accounts</p>
-                      <p className="text-2xl font-bold text-white">{userAccounts.length}</p>
-                    </div>
-                    <div className="bg-slate-800/60 rounded-xl p-4 border border-slate-700/50">
-                      <p className="text-xs text-[#9A9AA8] mb-1">SMS Messages</p>
-                      <p className="text-2xl font-bold text-white">
-                        {Array.isArray(smsLogs) ? smsLogs.filter((l: { direction: string }) => l.direction === "inbound").length : 0}
-                      </p>
-                    </div>
-                    <div className="bg-slate-800/60 rounded-xl p-4 border border-slate-700/50">
-                      <p className="text-xs text-[#9A9AA8] mb-1">SMS Status</p>
-                      <p className="text-sm font-semibold flex items-center gap-1.5 mt-1">
-                        {session.optedOut
-                          ? <><span className="w-2 h-2 rounded-full bg-red-400 inline-block" /><span className="text-red-300">Opted Out</span></>
-                          : <><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" /><span className="text-emerald-400">Active</span></>
-                        }
-                      </p>
-                    </div>
-                  </div>
                 </div>
               </div>
 
-              <div className="container mx-auto px-4 md:px-6 py-8 max-w-3xl">
+              <div className="container mx-auto px-4 md:px-6 py-6 max-w-3xl">
 
                 {/* Email verification token result banner */}
                 {emailVerifyStatus === "success" && (
@@ -1356,15 +1331,22 @@ export default function MyAccountPage() {
                   );
                 })()}
 
-                {/* Nav tabs */}
-                <div className="flex bg-white border border-[#E5E0D8] rounded-xl p-1 mb-6 gap-1 overflow-x-auto no-scrollbar">
-                  {navItems.map(({ key, label, icon: Icon }) => (
-                    <button key={key} onClick={() => setActiveSection(key)}
-                      className={cn("flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-semibold transition-all",
-                        activeSection === key ? "bg-blue-700 text-white shadow-sm" : "text-[#7C7C8A] hover:text-[#2C2C35] hover:bg-[#F8F6F2]"
-                      )}>
-                      <Icon className="w-4 h-4" />
-                      <span className="hidden sm:inline">{label}</span>
+                {/* Nav tabs — underline style */}
+                <div className="flex border-b border-[#E5E0D8] mb-6 overflow-x-auto no-scrollbar -mx-4 md:-mx-6 px-4 md:px-6">
+                  {navItems.map(({ key, label, icon: Icon, pro }) => (
+                    <button
+                      key={key}
+                      onClick={() => setActiveSection(key)}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-3 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors shrink-0",
+                        activeSection === key
+                          ? "border-blue-700 text-blue-700"
+                          : "border-transparent text-[#9A9AA8] hover:text-[#2C2C35] hover:border-[#C8C0B5]"
+                      )}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{label}</span>
+                      {pro && <Crown className="w-3 h-3 text-amber-500" title="Pro feature" />}
                     </button>
                   ))}
                 </div>
@@ -1958,6 +1940,22 @@ export default function MyAccountPage() {
                               <Input value={editLastName} onChange={(e) => setEditLastName(e.target.value)} className="h-10 border-[#E5E0D8] rounded-xl text-sm" />
                             </div>
                           </div>
+                          {/* Email — read-only display */}
+                          {(freshUser as { email?: string } | undefined)?.email && (
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-semibold text-[#2C2C35]">Email Address</label>
+                              <div className="flex items-center gap-2 h-10 px-3 bg-[#F8F6F2] border border-[#E5E0D8] rounded-xl">
+                                <Mail className="w-4 h-4 text-[#9A9AA8] shrink-0" />
+                                <span className="text-sm text-[#2C2C35] flex-1 truncate">
+                                  {(freshUser as { email?: string }).email}
+                                </span>
+                                {(freshUser as { emailVerified?: boolean }).emailVerified
+                                  ? <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 shrink-0">Verified</span>
+                                  : <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 shrink-0">Unverified</span>
+                                }
+                              </div>
+                            </div>
+                          )}
                           {/* Phone Number Management */}
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">
@@ -2130,19 +2128,19 @@ export default function MyAccountPage() {
                         </div>
                         <div className="p-6 space-y-4">
                           {selectedPlan !== "premium" ? (
-                            <div className="flex flex-col items-center text-center p-6 bg-gradient-to-b from-blue-50 to-slate-50 rounded-xl border border-blue-100 space-y-3">
-                              <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center">
-                                <Smartphone className="w-6 h-6 text-blue-600" />
+                            <div className="flex flex-col items-center text-center p-6 bg-[#F8F6F2] rounded-xl border border-[#E5E0D8] space-y-3">
+                              <div className="w-10 h-10 bg-white border border-[#E5E0D8] rounded-xl flex items-center justify-center">
+                                <Crown className="w-5 h-5 text-amber-500" />
                               </div>
                               <div>
-                                <p className="font-bold text-[#0D0E12] text-sm">Multiple Phones</p>
-                                <p className="text-xs text-[#7C7C8A] mt-1">Upgrade to Premium to link additional numbers — family members or backup phones can all access your account.</p>
+                                <p className="font-bold text-[#0D0E12] text-sm">Premium Feature</p>
+                                <p className="text-xs text-[#7C7C8A] mt-1">Upgrade to Premium to link additional phone numbers — family members or backup phones can all query your account via SMS.</p>
                               </div>
                               <button
                                 onClick={() => { setSelectedPlan("premium"); window.scrollTo({ top: 9999, behavior: "smooth" }); }}
-                                className="text-xs font-semibold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl px-4 py-2 transition-colors"
+                                className="text-xs font-semibold text-[#0D0E12] hover:text-blue-700 bg-white hover:bg-blue-50 border border-[#E5E0D8] hover:border-blue-300 rounded-xl px-4 py-2 transition-colors"
                               >
-                                Upgrade to Premium
+                                View Premium Plan
                               </button>
                             </div>
                           ) : (
@@ -2330,36 +2328,77 @@ export default function MyAccountPage() {
                       <div className="bg-white border border-[#E5E0D8] rounded-2xl overflow-hidden">
                         <div className="px-6 py-4 border-b border-[#EDE8E0]">
                           <h3 className="font-bold text-[#0D0E12] text-sm flex items-center gap-2">
-                            <Zap className="w-4 h-4 text-[#7C7C8A]" /> Plan & Billing
+                            <CreditCard className="w-4 h-4 text-[#7C7C8A]" /> Plan &amp; Billing
                           </h3>
                           <p className="text-xs text-[#9A9AA8] mt-0.5">Manage your subscription</p>
                         </div>
                         <div className="p-6 space-y-4">
-                          <div className="grid grid-cols-2 gap-3">
+                          {/* Current plan badge */}
+                          <div className="flex items-center gap-2 px-3 py-2 bg-[#F8F6F2] border border-[#E5E0D8] rounded-xl">
+                            <div className={cn("w-2 h-2 rounded-full", selectedPlan === "basic" ? "bg-slate-400" : selectedPlan === "pro" ? "bg-amber-400" : "bg-blue-500")} />
+                            <span className="text-xs text-[#7C7C8A]">Current plan:</span>
+                            <span className="text-xs font-bold text-[#0D0E12] capitalize">{selectedPlan === "pro" ? "Pro" : selectedPlan === "premium" ? "Premium" : "Basic (Free)"}</span>
+                          </div>
+
+                          {/* Plan cards */}
+                          <div className="space-y-2.5">
                             {([
-                              { key: "basic" as const, name: "Basic", price: "Free", features: ["2 accounts", "50 SMS/mo", "1 phone number", "Standard support"] },
-                              { key: "premium" as const, name: "Premium", price: "$4/mo", features: ["Unlimited accounts", "Unlimited SMS", "Multiple phone numbers", "Priority support"] },
+                              {
+                                key: "basic" as const,
+                                name: "Basic",
+                                price: "Free",
+                                accent: "border-[#E5E0D8]",
+                                selectedAccent: "border-slate-400 bg-slate-50",
+                                checkColor: "bg-slate-500",
+                                features: ["2 linked bank accounts", "50 SMS commands/month", "Balance & transaction queries", "1 phone number"],
+                              },
+                              {
+                                key: "pro" as const,
+                                name: "Pro",
+                                price: "$9.99/mo",
+                                badge: "Most Popular",
+                                accent: "border-[#E5E0D8]",
+                                selectedAccent: "border-amber-400 bg-amber-50/40",
+                                checkColor: "bg-amber-500",
+                                features: ["Unlimited bank accounts", "Unlimited SMS commands", "AI spending categories", "Proactive alerts & notifications", "Spending analytics dashboard"],
+                              },
+                              {
+                                key: "premium" as const,
+                                name: "Premium",
+                                price: "$19.99/mo",
+                                accent: "border-[#E5E0D8]",
+                                selectedAccent: "border-blue-500 bg-blue-50/40",
+                                checkColor: "bg-blue-600",
+                                features: ["Everything in Pro", "Multiple phone numbers", "Family / household access", "Priority SMS support", "Early access to new features"],
+                              },
                             ]).map((plan) => (
                               <button
                                 key={plan.key}
                                 onClick={() => setSelectedPlan(plan.key)}
-                                className={cn("relative text-left p-4 rounded-xl border-2 transition-all",
-                                  selectedPlan === plan.key
-                                    ? "border-blue-600 bg-blue-50"
-                                    : "border-[#E5E0D8] bg-white hover:border-slate-300"
+                                className={cn("relative w-full text-left p-4 rounded-xl border-2 transition-all",
+                                  selectedPlan === plan.key ? plan.selectedAccent : "border-[#E5E0D8] bg-white hover:border-[#C8C0B5]"
                                 )}
                               >
-                                {selectedPlan === plan.key && (
-                                  <div className="absolute top-2.5 right-2.5 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
-                                    <Check className="w-3 h-3 text-white" />
+                                <div className="flex items-start justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-[#0D0E12] text-sm">{plan.name}</span>
+                                    {"badge" in plan && plan.badge && (
+                                      <span className="text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5">{plan.badge}</span>
+                                    )}
                                   </div>
-                                )}
-                                <p className="font-bold text-[#0D0E12] text-sm mb-0.5">{plan.name}</p>
-                                <p className={cn("text-base font-bold mb-3", selectedPlan === plan.key ? "text-blue-700" : "text-[#2C2C35]")}>{plan.price}</p>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-bold text-[#0D0E12]">{plan.price}</span>
+                                    {selectedPlan === plan.key && (
+                                      <div className={cn("w-5 h-5 rounded-full flex items-center justify-center shrink-0", plan.checkColor)}>
+                                        <Check className="w-3 h-3 text-white" />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
                                 <ul className="space-y-1">
                                   {plan.features.map((f) => (
                                     <li key={f} className="flex items-center gap-1.5 text-xs text-[#7C7C8A]">
-                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
                                       {f}
                                     </li>
                                   ))}
@@ -2367,9 +2406,10 @@ export default function MyAccountPage() {
                               </button>
                             ))}
                           </div>
-                          {selectedPlan === "premium" && (
+
+                          {selectedPlan !== "basic" && (
                             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
-                              Payment processing coming soon. Premium features will be unlocked at launch.
+                              <span className="font-semibold">Coming soon:</span> Stripe billing will be enabled at launch. Your plan selection is saved and features will be unlocked automatically.
                             </div>
                           )}
                         </div>
