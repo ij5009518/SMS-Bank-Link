@@ -30,6 +30,7 @@ import {
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PublicLayout } from "@/components/layout/PublicLayout";
@@ -805,13 +806,12 @@ export default function MyAccountPage() {
                         <p className="text-xs text-slate-600">One more step — we need your mobile number so you can text banking commands.</p>
                         <div className="space-y-1.5">
                           <label className="text-xs font-semibold text-slate-700">Mobile Number</label>
-                          <div className="relative">
-                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <Input type="tel" placeholder="(555) 123-4567" value={googlePhone}
-                              onChange={(e) => { setGooglePhone(e.target.value); setGoogleError(null); }}
-                              onKeyDown={(e) => e.key === "Enter" && googlePhone.replace(/\D/g, "").length >= 10 && handleGoogleComplete()}
-                              className="pl-9 h-10 border-slate-200 rounded-xl text-sm" />
-                          </div>
+                          <PhoneInput
+                            value={googlePhone}
+                            onChange={(v) => { setGooglePhone(v); setGoogleError(null); }}
+                            onKeyDown={(e) => e.key === "Enter" && googlePhone.replace(/\D/g, "").length >= 10 && handleGoogleComplete()}
+                            placeholder="(555) 123-4567"
+                          />
                         </div>
                         {googleError && <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5"><AlertCircle className="w-4 h-4 shrink-0" />{googleError}</div>}
                         <Button className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm" onClick={handleGoogleComplete}
@@ -846,13 +846,12 @@ export default function MyAccountPage() {
                         )}
                         <div className="space-y-1.5">
                           <label className="text-xs font-semibold text-slate-700">Mobile Number</label>
-                          <div className="relative">
-                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <Input type="tel" placeholder="(555) 123-4567" value={signInPhone}
-                              onChange={(e) => { setSignInPhone(e.target.value); setError(null); }}
-                              onKeyDown={(e) => e.key === "Enter" && handleSignIn()}
-                              className="pl-9 h-10 border-slate-200 rounded-xl text-sm" />
-                          </div>
+                          <PhoneInput
+                            value={signInPhone}
+                            onChange={(v) => { setSignInPhone(v); setError(null); }}
+                            onKeyDown={(e) => e.key === "Enter" && handleSignIn()}
+                            placeholder="(555) 123-4567"
+                          />
                         </div>
                         <div className="space-y-1.5">
                           <label className="text-xs font-semibold text-slate-700">Password</label>
@@ -908,10 +907,11 @@ export default function MyAccountPage() {
                         </div>
                         <div className="space-y-1.5">
                           <label className="text-xs font-semibold text-slate-700">Mobile Number</label>
-                          <div className="relative">
-                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <Input type="tel" placeholder="(555) 123-4567" value={signUpPhone} onChange={(e) => { setSignUpPhone(e.target.value); setError(null); }} className="pl-9 h-10 border-slate-200 rounded-xl text-sm" />
-                          </div>
+                          <PhoneInput
+                            value={signUpPhone}
+                            onChange={(v) => { setSignUpPhone(v); setError(null); }}
+                            placeholder="(555) 123-4567"
+                          />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1.5">
@@ -1401,15 +1401,11 @@ export default function MyAccountPage() {
                             {phoneSection === "change-request" && (
                               <div className="space-y-3 p-4 bg-slate-50 border border-slate-200 rounded-xl">
                                 <p className="text-xs text-slate-600 font-medium">Enter your new mobile number. We'll send a verification code to confirm it.</p>
-                                <div className="relative">
-                                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                  <Input
-                                    value={newPhone}
-                                    onChange={(e) => setNewPhone(e.target.value)}
-                                    placeholder="+1 (555) 000-0000"
-                                    className="pl-9 h-10 border-slate-200 rounded-xl text-sm"
-                                  />
-                                </div>
+                                <PhoneInput
+                                  value={newPhone}
+                                  onChange={setNewPhone}
+                                  placeholder="(555) 000-0000"
+                                />
                                 <div className="flex gap-2">
                                   <Button
                                     className="flex-1 bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-9 text-xs font-semibold"
@@ -1576,15 +1572,11 @@ export default function MyAccountPage() {
                                 <div className="space-y-3 p-4 bg-slate-50 border border-slate-200 rounded-xl">
                                   <p className="text-xs text-slate-600 font-medium">Enter the new number. We'll send a 6-digit code to verify it.</p>
                                   <div className="space-y-2">
-                                    <div className="relative">
-                                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                      <Input
-                                        value={addPhoneNumber}
-                                        onChange={(e) => setAddPhoneNumber(e.target.value)}
-                                        placeholder="+1 (555) 000-0000"
-                                        className="pl-9 h-10 border-slate-200 rounded-xl text-sm"
-                                      />
-                                    </div>
+                                    <PhoneInput
+                                      value={addPhoneNumber}
+                                      onChange={setAddPhoneNumber}
+                                      placeholder="(555) 000-0000"
+                                    />
                                     <Input
                                       value={addPhoneLabel}
                                       onChange={(e) => setAddPhoneLabel(e.target.value)}

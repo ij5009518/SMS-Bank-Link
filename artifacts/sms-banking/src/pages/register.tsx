@@ -24,6 +24,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Form,
@@ -379,10 +380,11 @@ export default function RegisterPage() {
                         <FormItem>
                           <FormLabel className="text-xs font-semibold text-slate-700">Mobile Number</FormLabel>
                           <FormControl>
-                            <div className="relative">
-                              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                              <Input type="tel" placeholder="(555) 123-4567" {...field} className="pl-9 h-10 border-slate-200 rounded-xl text-sm" />
-                            </div>
+                            <PhoneInput
+                              value={field.value}
+                              onChange={field.onChange}
+                              placeholder="(555) 123-4567"
+                            />
                           </FormControl>
                           <FormDescription className="text-xs text-slate-400">
                             We'll text a verification code to this number.
