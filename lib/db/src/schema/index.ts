@@ -6,3 +6,5 @@ export * from "./settings";
 export * from "./teller_enrollments";
 export * from "./trusted_devices";
 export * from "./phone_numbers";
+export * from "./categories";
+export * from "./alerts";

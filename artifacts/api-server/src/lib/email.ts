@@ -163,6 +163,47 @@ export async function sendDeviceVerificationEmail(to: string, firstName: string,
   }
 }
 
+export async function sendPasswordResetEmail(to: string, firstName: string, resetUrl: string): Promise<boolean> {
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+    const { error } = await client.emails.send({
+      from: fromEmail,
+      to,
+      subject: `Reset your Text Banks password`,
+      html: `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 16px;"><tr><td align="center">
+    <table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#fff;border-radius:20px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
+      <tr><td style="background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%);padding:28px 40px;">
+        <span style="color:#fff;font-size:20px;font-weight:800;letter-spacing:-0.5px;">Text Banks</span>
+        <span style="float:right;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;font-size:11px;font-weight:700;letter-spacing:0.06em;border-radius:20px;padding:5px 12px;">PASSWORD RESET</span>
+      </td></tr>
+      <tr><td style="padding:40px;">
+        <h1 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#0f172a;">Reset your password, ${firstName}</h1>
+        <p style="margin:0 0 28px;font-size:15px;color:#64748b;line-height:1.6;">We received a request to reset your Text Banks password. Click the button below — this link expires in <strong>1 hour</strong>.</p>
+        <a href="${resetUrl}" style="display:block;background:#2563eb;color:#fff;text-align:center;padding:16px 24px;border-radius:12px;font-size:15px;font-weight:700;text-decoration:none;margin-bottom:24px;">Reset My Password &rarr;</a>
+        <div style="background:#fef9ec;border:1px solid #fde68a;border-radius:10px;padding:14px 18px;margin-bottom:20px;">
+          <p style="margin:0;font-size:13px;color:#92400e;">If you didn't request this, you can safely ignore this email. Your password won't change.</p>
+        </div>
+        <p style="margin:0;font-size:12px;color:#94a3b8;">Or copy this link: <span style="color:#2563eb;">${resetUrl}</span></p>
+      </td></tr>
+      <tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:20px 40px;text-align:center;">
+        <p style="margin:0;font-size:12px;color:#94a3b8;">If you didn't create a Text Banks account, you can safely ignore this email.</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`,
+    });
+    if (error) { console.error("[Email] Resend error (pw reset):", error); return false; }
+    console.log(`[Email] Password reset email sent to ${to}`);
+    return true;
+  } catch (err) {
+    console.warn("[Email] Could not send password reset email:", err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
 export async function isEmailConfigured(): Promise<boolean> {
   try {
     await getCredentials();

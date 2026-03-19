@@ -5,11 +5,15 @@ import { eq, and, gt } from "drizzle-orm";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { sendSms, normalizeE164 } from "../lib/signalwire.js";
-import { sendWelcomeEmail, sendEmailVerificationEmail, sendDeviceVerificationEmail } from "../lib/email.js";
+import { sendWelcomeEmail, sendEmailVerificationEmail, sendDeviceVerificationEmail, sendPasswordResetEmail } from "../lib/email.js";
 import { OAuth2Client } from "google-auth-library";
 
 const scryptAsync = promisify(scrypt);
 const router: IRouter = Router();
+
+function capitalizeName(name: string): string {
+  return name.trim().replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
@@ -126,8 +130,8 @@ router.post("/signup", async (req, res) => {
     const [user] = await db.insert(usersTable).values({
       phoneNumber: normalizedPhone,
       email: normalizedEmail,
-      firstName,
-      lastName,
+      firstName: capitalizeName(firstName),
+      lastName: capitalizeName(lastName),
       passwordHash,
       smsConsent: !!smsConsent,
       consentDate: smsConsent ? new Date() : null,
@@ -496,6 +500,87 @@ router.post("/confirm-phone-change", async (req, res) => {
 
   const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, userId));
   res.json({ success: true, user: safeUser(updated, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+});
+
+// ── Forgot / Reset Password ───────────────────────────────────────────────
+const WEBSITE_URL = process.env.WEBSITE_URL || "https://textbanks.app";
+
+// Step 1: request reset — by email (sends link) or by phone (sends SMS OTP)
+router.post("/forgot-password", async (req, res) => {
+  const { identifier } = req.body as { identifier?: string };
+  if (!identifier) return res.status(400).json({ error: "bad_request", message: "Email or phone number is required." });
+
+  const isEmail = identifier.includes("@");
+  const allUsers = await db.select().from(usersTable);
+
+  let user: typeof allUsers[number] | undefined;
+  if (isEmail) {
+    user = allUsers.find((u) => u.email?.toLowerCase() === identifier.toLowerCase().trim());
+  } else {
+    const digits = identifier.replace(/\D/g, "");
+    user = allUsers.find((u) => u.phoneNumber.replace(/\D/g, "") === digits);
+  }
+
+  // Always respond 200 to prevent enumeration
+  if (!user) return res.json({ success: true, method: isEmail ? "email" : "sms" });
+
+  if (isEmail && user.email) {
+    const token = randomBytes(40).toString("hex");
+    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await db.update(usersTable).set({ passwordResetToken: token, passwordResetTokenExpiry: expiry }).where(eq(usersTable.id, user.id));
+    const resetUrl = `${WEBSITE_URL}/my-account?reset_token=${token}`;
+    sendPasswordResetEmail(user.email, user.firstName, resetUrl)
+      .catch((e) => console.error("[Auth] Password reset email failed:", e instanceof Error ? e.message : e));
+    return res.json({ success: true, method: "email" });
+  } else {
+    // SMS OTP
+    const otp = generateVerificationCode();
+    const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    await db.update(usersTable).set({ passwordResetOtp: otp, passwordResetOtpExpiry: expiry }).where(eq(usersTable.id, user.id));
+    const e164 = normalizeE164(user.phoneNumber);
+    if (e164) {
+      sendSms(e164, `Your Text Banks password reset code is: ${otp}\n\nExpires in 15 minutes. Do not share it.`)
+        .catch((e) => console.error("[Auth] Password reset SMS failed:", e instanceof Error ? e.message : e));
+    }
+    return res.json({ success: true, method: "sms", userId: user.id });
+  }
+});
+
+// Step 2a: Reset via email token
+router.post("/reset-password-token", async (req, res) => {
+  const { token, newPassword } = req.body as { token?: string; newPassword?: string };
+  if (!token || !newPassword) return res.status(400).json({ error: "bad_request", message: "Token and new password are required." });
+  if (newPassword.length < 6) return res.status(400).json({ error: "bad_request", message: "Password must be at least 6 characters." });
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.passwordResetToken, token));
+  if (!user) return res.status(404).json({ error: "invalid_token", message: "This reset link is invalid or has already been used." });
+  if (user.passwordResetTokenExpiry && new Date() > new Date(user.passwordResetTokenExpiry)) {
+    return res.status(400).json({ error: "token_expired", message: "This reset link has expired. Please request a new one." });
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  await db.update(usersTable).set({ passwordHash, passwordResetToken: null, passwordResetTokenExpiry: null }).where(eq(usersTable.id, user.id));
+  return res.json({ success: true, message: "Your password has been updated. You can now sign in." });
+});
+
+// Step 2b: Reset via SMS OTP
+router.post("/reset-password-otp", async (req, res) => {
+  const { userId, otp, newPassword } = req.body as { userId?: number; otp?: string; newPassword?: string };
+  if (!userId || !otp || !newPassword) return res.status(400).json({ error: "bad_request", message: "User ID, OTP, and new password are required." });
+  if (newPassword.length < 6) return res.status(400).json({ error: "bad_request", message: "Password must be at least 6 characters." });
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) return res.status(404).json({ error: "not_found", message: "User not found." });
+  if (!user.passwordResetOtp || user.passwordResetOtp !== otp) {
+    return res.status(401).json({ error: "invalid_otp", message: "Incorrect code. Please try again." });
+  }
+  if (user.passwordResetOtpExpiry && new Date() > new Date(user.passwordResetOtpExpiry)) {
+    return res.status(400).json({ error: "otp_expired", message: "This code has expired. Please request a new one." });
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  await db.update(usersTable).set({ passwordHash, passwordResetOtp: null, passwordResetOtpExpiry: null }).where(eq(usersTable.id, user.id));
+  return res.json({ success: true, message: "Your password has been updated. You can now sign in." });
 });
 
 // ── Google Sign-In ──────────────────────────────────────────────────────────

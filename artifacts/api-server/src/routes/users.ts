@@ -121,8 +121,8 @@ router.patch("/:userId", async (req, res) => {
   };
 
   const updates: Record<string, unknown> = {};
-  if (firstName !== undefined) updates.firstName = firstName;
-  if (lastName !== undefined) updates.lastName = lastName;
+  if (firstName !== undefined) updates.firstName = firstName.trim().replace(/\b\w/g, (c: string) => c.toUpperCase());
+  if (lastName !== undefined) updates.lastName = lastName.trim().replace(/\b\w/g, (c: string) => c.toUpperCase());
   if (optedOut !== undefined) updates.optedOut = optedOut;
   if (onboardingStatus !== undefined) updates.onboardingStatus = onboardingStatus;
   if (plan !== undefined && (plan === "basic" || plan === "premium")) updates.plan = plan;

@@ -26,6 +26,10 @@ export const usersTable = pgTable("users", {
   deviceVerificationExpiry: timestamp("device_verification_expiry"),
   plan: text("plan").notNull().default("basic"),
   googleId: text("google_id").unique(),
+  passwordResetToken: text("password_reset_token").unique(),
+  passwordResetTokenExpiry: timestamp("password_reset_token_expiry"),
+  passwordResetOtp: text("password_reset_otp"),
+  passwordResetOtpExpiry: timestamp("password_reset_otp_expiry"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

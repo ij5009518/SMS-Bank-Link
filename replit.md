@@ -41,9 +41,24 @@ artifacts-monorepo/
 
 ### User-Facing
 - Landing page (hero, how it works, security, FAQ, pricing, SMS commands)
+  - Animated bank logos marquee (16 US banks)
+  - 3-tier pricing (Basic $0, Plus $4, Pro $9)
+  - FAQ accordion section
+  - Contact form (sends to `/api/contact`)
 - Registration portal (3-step: info → SMS consent → bank link)
+  - Auto-capitalized first/last names
+  - Country-code phone input (60+ countries, searchable)
+  - Google Sign-In integration
 - Privacy Policy and Terms of Service pages
 - SMS commands: BAL, BAL [nickname], TRANS, HELP, STOP
+
+### My Account / Dashboard
+- Sign-in with phone + password or Google Sign-In
+- Forgot password via email link or SMS OTP
+- Auto-logout after 30 minutes of inactivity (60-second warning modal)
+- Profile dropdown (settings, report bug, sign out)
+- Onboarding progress map (4 steps with progress bar)
+- Report Bug modal (submits to contact API)
 
 ### Admin Dashboard (/admin)
 - Overview stats (users, accounts, SMS activity)
@@ -54,11 +69,15 @@ artifacts-monorepo/
 
 ## Database Schema
 
-- `users` — phone, consent, opt-out, onboarding status
+- `users` — phone, consent, opt-out, onboarding status, password reset fields, Google auth fields
 - `accounts` — linked bank accounts (last 4 digits only stored)
 - `transactions` — read-only transaction records
 - `sms_logs` — inbound/outbound SMS activity
 - `alert_settings` — global alert configuration
+- `categories` — spending categories per user (system defaults + custom); AI keyword matching
+- `alerts` — per-user alert rules (low balance, large transaction, etc.)
+- `phones` — additional linked phone numbers per user (premium)
+- `trusted_devices` — 30-day device trust tokens per user
 
 ## API Routes
 

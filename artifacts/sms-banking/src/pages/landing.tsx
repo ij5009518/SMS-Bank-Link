@@ -13,19 +13,95 @@ import {
   Building2,
   Lock,
   Zap,
+  ChevronDown,
+  Star,
+  Mail,
+  User,
+  MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { useSimulateSms } from "@workspace/api-client-react";
+
+const BANK_LOGOS = [
+  { name: "Chase", color: "#117ACA", abbr: "JPM" },
+  { name: "Bank of America", color: "#E31837", abbr: "BAC" },
+  { name: "Wells Fargo", color: "#D71E28", abbr: "WF" },
+  { name: "Citibank", color: "#003B70", abbr: "C" },
+  { name: "Capital One", color: "#CC0000", abbr: "COF" },
+  { name: "US Bank", color: "#0071CE", abbr: "USB" },
+  { name: "TD Bank", color: "#34B233", abbr: "TD" },
+  { name: "PNC Bank", color: "#F38400", abbr: "PNC" },
+  { name: "Ally Bank", color: "#7D2B8B", abbr: "ALLY" },
+  { name: "Charles Schwab", color: "#006DB3", abbr: "SCH" },
+  { name: "Fidelity", color: "#65B32E", abbr: "FID" },
+  { name: "SoFi", color: "#00A2D4", abbr: "SOFI" },
+  { name: "Discover", color: "#F76619", abbr: "DFS" },
+  { name: "Goldman Sachs", color: "#6666AA", abbr: "GS" },
+  { name: "USAA", color: "#00406B", abbr: "USAA" },
+  { name: "Navy Federal", color: "#003F87", abbr: "NFCU" },
+];
+
+const FAQ_ITEMS = [
+  {
+    q: "Is it safe to link my bank account?",
+    a: "Yes. We use Teller, a bank-grade API with read-only access. We never see or store your login credentials, and it's architecturally impossible for us to move or transfer money.",
+  },
+  {
+    q: "Which banks are supported?",
+    a: "Over 10,000 US banks and credit unions are supported, including Chase, Bank of America, Wells Fargo, Citibank, Capital One, and most regional banks and credit unions.",
+  },
+  {
+    q: "Do I need a smartphone to use Text Banks?",
+    a: "No. Text Banks works on any mobile phone — from basic feature phones to the latest smartphones — using standard SMS. No internet or data plan required.",
+  },
+  {
+    q: "How fast are replies?",
+    a: "Most replies arrive in under 3 seconds. We process your text command, query your bank in real-time, and send the response back immediately.",
+  },
+  {
+    q: "Can someone use my phone to access my accounts?",
+    a: "Only the registered phone number can query your account. You can add a PIN for extra security. And remember — we're strictly read-only, so even if someone texts from your phone, they can't move money.",
+  },
+  {
+    q: "How do I cancel?",
+    a: "Just text STOP to unsubscribe instantly. You can also delete your account from your account settings at any time.",
+  },
+];
 
 export default function LandingPage() {
   const [demoInput, setDemoInput] = useState("");
   const [demoMessages, setDemoMessages] = useState<{ text: string; isUser: boolean }[]>([
     { text: "Welcome to Text Banks. Reply HELP for commands.", isUser: false },
   ]);
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [contactForm, setContactForm] = useState({ name: "", email: "", message: "" });
+  const [contactStatus, setContactStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   const simulateMutation = useSimulateSms();
+
+  const handleContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contactForm.name.trim() || !contactForm.message.trim()) return;
+    setContactStatus("sending");
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(contactForm),
+      });
+      if (res.ok) {
+        setContactStatus("sent");
+        setContactForm({ name: "", email: "", message: "" });
+      } else {
+        setContactStatus("error");
+      }
+    } catch {
+      setContactStatus("error");
+    }
+  };
 
   const handleSimulate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -220,6 +296,44 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Bank Logos Marquee ── */}
+      <section className="bg-white py-10 border-b border-slate-100 overflow-hidden">
+        <div className="container mx-auto px-4 md:px-6 mb-6 text-center">
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Works with your bank</p>
+        </div>
+        <div className="relative">
+          <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none" />
+          <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none" />
+          <div className="flex gap-4 marquee-track">
+            {[...BANK_LOGOS, ...BANK_LOGOS].map((bank, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-slate-200 bg-slate-50 shrink-0 hover:border-slate-300 transition-colors"
+              >
+                <div
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                  style={{ backgroundColor: bank.color }}
+                >
+                  {bank.abbr.slice(0, 2)}
+                </div>
+                <span className="text-sm font-semibold text-slate-700 whitespace-nowrap">{bank.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <style>{`
+          .marquee-track {
+            animation: marquee 30s linear infinite;
+            width: max-content;
+          }
+          .marquee-track:hover { animation-play-state: paused; }
+          @keyframes marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+          }
+        `}</style>
+      </section>
+
       {/* ── How it works ── */}
       <section className="py-24 bg-white">
         <div className="container mx-auto px-4 md:px-6">
@@ -388,7 +502,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── Pricing ── */}
-      <section className="py-24 bg-slate-50 border-t border-slate-200">
+      <section className="py-24 bg-slate-50 border-t border-slate-200" id="pricing">
         <div className="container mx-auto px-4 md:px-6">
           <div className="text-center max-w-2xl mx-auto mb-14">
             <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
@@ -402,8 +516,9 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {/* Basic */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm flex flex-col">
               <div className="mb-6">
                 <h3 className="text-xl font-bold text-slate-900 mb-1">Basic</h3>
                 <p className="text-slate-500 text-sm">For individuals getting started</p>
@@ -412,10 +527,11 @@ export default function LandingPage() {
                 <span className="text-5xl font-display font-extrabold text-slate-900">$0</span>
                 <span className="text-slate-500 text-base ml-1">/month</span>
               </div>
-              <ul className="space-y-3 mb-8">
+              <ul className="space-y-3 mb-8 flex-1">
                 {[
                   "Up to 2 linked accounts",
                   "50 SMS queries per month",
+                  "Balance & transaction checks",
                   "Standard support",
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-3 text-sm text-slate-600">
@@ -431,24 +547,26 @@ export default function LandingPage() {
               </Link>
             </div>
 
-            <div className="bg-blue-700 rounded-2xl p-8 shadow-xl relative overflow-hidden">
-              <div className="absolute top-4 right-4 bg-white/15 text-white text-xs font-bold px-2.5 py-1 rounded-full">
-                RECOMMENDED
+            {/* Plus */}
+            <div className="bg-blue-700 rounded-2xl p-8 shadow-xl relative overflow-hidden flex flex-col">
+              <div className="absolute top-4 right-4 bg-white/15 text-white text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1">
+                <Star className="w-3 h-3" /> POPULAR
               </div>
               <div className="mb-6">
-                <h3 className="text-xl font-bold text-white mb-1">Premium</h3>
-                <p className="text-blue-200 text-sm">For power users and families</p>
+                <h3 className="text-xl font-bold text-white mb-1">Plus</h3>
+                <p className="text-blue-200 text-sm">For regular users who want more</p>
               </div>
               <div className="mb-8">
                 <span className="text-5xl font-display font-extrabold text-white">$4</span>
                 <span className="text-blue-200 text-base ml-1">/month</span>
               </div>
-              <ul className="space-y-3 mb-8">
+              <ul className="space-y-3 mb-8 flex-1">
                 {[
-                  "Unlimited linked accounts",
-                  "Unlimited SMS queries",
-                  "Priority support & alerts",
-                  "Custom account nicknames",
+                  "Up to 10 linked accounts",
+                  "500 SMS queries per month",
+                  "Spending categories",
+                  "Balance alerts via SMS",
+                  "Priority support",
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-3 text-sm text-blue-100">
                     <CheckCircle2 className="w-4 h-4 text-blue-300 shrink-0" />
@@ -458,10 +576,173 @@ export default function LandingPage() {
               </ul>
               <Link href="/register">
                 <Button className="w-full bg-white text-blue-700 hover:bg-blue-50 rounded-xl h-11 font-semibold shadow-sm">
-                  Get Premium
+                  Get Plus
                 </Button>
               </Link>
             </div>
+
+            {/* Pro */}
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 shadow-xl flex flex-col">
+              <div className="mb-6">
+                <h3 className="text-xl font-bold text-white mb-1">Pro</h3>
+                <p className="text-slate-400 text-sm">For power users and families</p>
+              </div>
+              <div className="mb-8">
+                <span className="text-5xl font-display font-extrabold text-white">$9</span>
+                <span className="text-slate-400 text-base ml-1">/month</span>
+              </div>
+              <ul className="space-y-3 mb-8 flex-1">
+                {[
+                  "Unlimited linked accounts",
+                  "Unlimited SMS queries",
+                  "AI spending insights",
+                  "Custom account nicknames",
+                  "Multi-number support",
+                  "White-glove onboarding",
+                ].map((item) => (
+                  <li key={item} className="flex items-center gap-3 text-sm text-slate-300">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/register">
+                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-11 font-semibold shadow-sm">
+                  Go Pro
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FAQ ── */}
+      <section className="py-24 bg-white border-t border-slate-100" id="faq">
+        <div className="container mx-auto px-4 md:px-6">
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
+              FAQ
+            </div>
+            <h2 className="text-3xl md:text-4xl font-display font-bold text-slate-900 mb-4">
+              Common questions
+            </h2>
+            <p className="text-slate-500 text-lg">
+              Everything you need to know about Text Banks.
+            </p>
+          </div>
+
+          <div className="max-w-2xl mx-auto space-y-3">
+            {FAQ_ITEMS.map((item, i) => (
+              <div key={i} className="border border-slate-200 rounded-xl overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-slate-50 transition-colors"
+                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                >
+                  <span className="font-semibold text-slate-900 text-sm pr-4">{item.q}</span>
+                  <ChevronDown
+                    className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${openFaq === i ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {openFaq === i && (
+                  <div className="px-6 pb-5 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-4">
+                    {item.a}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Contact ── */}
+      <section className="py-24 bg-slate-50 border-t border-slate-200" id="contact">
+        <div className="container mx-auto px-4 md:px-6">
+          <div className="max-w-xl mx-auto">
+            <div className="text-center mb-10">
+              <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
+                Contact
+              </div>
+              <h2 className="text-3xl md:text-4xl font-display font-bold text-slate-900 mb-4">
+                Get in touch
+              </h2>
+              <p className="text-slate-500">
+                Have a question, feedback, or want to report a bug? We'd love to hear from you.
+              </p>
+            </div>
+
+            {contactStatus === "sent" ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-emerald-50 border border-emerald-200 rounded-2xl p-10 text-center"
+              >
+                <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
+                <h3 className="text-lg font-bold text-slate-900 mb-2">Message received!</h3>
+                <p className="text-slate-500 text-sm">We'll get back to you within 24 hours.</p>
+                <button
+                  className="mt-5 text-sm text-blue-600 hover:underline"
+                  onClick={() => setContactStatus("idle")}
+                >
+                  Send another message
+                </button>
+              </motion.div>
+            ) : (
+              <form onSubmit={handleContact} className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm space-y-5">
+                <div className="grid sm:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">Name *</label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Input
+                        placeholder="Your name"
+                        className="pl-9 rounded-xl border-slate-200 h-11"
+                        value={contactForm.name}
+                        onChange={(e) => setContactForm((f) => ({ ...f, name: e.target.value }))}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">Email</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Input
+                        type="email"
+                        placeholder="your@email.com"
+                        className="pl-9 rounded-xl border-slate-200 h-11"
+                        value={contactForm.email}
+                        onChange={(e) => setContactForm((f) => ({ ...f, email: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Message *</label>
+                  <div className="relative">
+                    <MessageCircle className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <Textarea
+                      placeholder="Tell us what's on your mind…"
+                      className="pl-9 rounded-xl border-slate-200 min-h-[120px]"
+                      value={contactForm.message}
+                      onChange={(e) => setContactForm((f) => ({ ...f, message: e.target.value }))}
+                      required
+                    />
+                  </div>
+                </div>
+                {contactStatus === "error" && (
+                  <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    Something went wrong. Please try again.
+                  </p>
+                )}
+                <Button
+                  type="submit"
+                  disabled={contactStatus === "sending"}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-11 font-semibold"
+                >
+                  {contactStatus === "sending" ? "Sending…" : "Send Message"}
+                </Button>
+              </form>
+            )}
           </div>
         </div>
       </section>

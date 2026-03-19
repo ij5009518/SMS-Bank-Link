@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Building2,
@@ -26,6 +26,10 @@ import {
   Plus,
   Trash2,
   Smartphone,
+  ChevronDown,
+  Bug,
+  X,
+  Clock,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -135,6 +139,32 @@ export default function MyAccountPage() {
   const [signUpPassword, setSignUpPassword] = useState("");
   const [signUpConfirm, setSignUpConfirm] = useState("");
   const [signUpConsent, setSignUpConsent] = useState(false);
+
+  // Forgot password
+  const [showForgotPw, setShowForgotPw] = useState(false);
+  const [forgotStep, setForgotStep] = useState<"email" | "sms" | "reset">("email");
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotPhone, setForgotPhone] = useState("");
+  const [forgotUserId, setForgotUserId] = useState<number | null>(null);
+  const [forgotOtp, setForgotOtp] = useState("");
+  const [forgotNewPw, setForgotNewPw] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
+
+  // Auto-logout inactivity (30 min)
+  const INACTIVITY_MS = 30 * 60 * 1000;
+  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showInactivityWarning, setShowInactivityWarning] = useState(false);
+
+  // Profile dropdown
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  // Report Bug
+  const [showReportBug, setShowReportBug] = useState(false);
+  const [bugReport, setBugReport] = useState("");
+  const [bugReportStatus, setBugReportStatus] = useState<"idle" | "sending" | "sent">("idle");
 
   // Settings state
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -440,8 +470,103 @@ export default function MyAccountPage() {
     finally { setIsLoading(false); }
   };
 
+  // ── Auto-logout on inactivity ──────────────────────────────────────────────
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    setShowInactivityWarning(false);
+    inactivityTimer.current = setTimeout(() => {
+      setShowInactivityWarning(true);
+      // Give them 60 seconds to respond, then log out
+      inactivityTimer.current = setTimeout(() => {
+        clearSession(); setSession(null); setShowInactivityWarning(false);
+      }, 60_000);
+    }, INACTIVITY_MS);
+  }, [INACTIVITY_MS]);
+
+  useEffect(() => {
+    if (!session) return;
+    const events = ["mousedown", "keydown", "touchstart", "scroll"];
+    events.forEach((e) => window.addEventListener(e, resetInactivityTimer, { passive: true }));
+    resetInactivityTimer();
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, resetInactivityTimer));
+      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    };
+  }, [session, resetInactivityTimer]);
+
+  // ── Profile dropdown close on outside click ─────────────────────────────
+  useEffect(() => {
+    if (!showProfileMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setShowProfileMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showProfileMenu]);
+
+  // ── Forgot Password ─────────────────────────────────────────────────────
+  const handleForgotPassword = async () => {
+    setForgotError(null); setForgotLoading(true);
+    try {
+      if (forgotStep === "email") {
+        const res = await fetch("/api/auth/forgot-password", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: forgotEmail }),
+        });
+        const data = await res.json();
+        if (!res.ok) { setForgotError(data.message || "Could not find account."); return; }
+        setForgotSuccess("Password reset link sent — check your email.");
+      } else if (forgotStep === "sms") {
+        const res = await fetch("/api/auth/forgot-password", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phoneNumber: forgotPhone }),
+        });
+        const data = await res.json();
+        if (!res.ok) { setForgotError(data.message || "Could not find account."); return; }
+        setForgotUserId(data.userId);
+        setForgotStep("reset");
+      }
+    } catch { setForgotError("Network error. Please try again."); }
+    finally { setForgotLoading(false); }
+  };
+
+  const handleForgotOtpReset = async () => {
+    if (!forgotUserId) return;
+    setForgotError(null); setForgotLoading(true);
+    try {
+      const res = await fetch("/api/auth/reset-password-otp", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: forgotUserId, otp: forgotOtp, newPassword: forgotNewPw }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setForgotError(data.message || "Reset failed."); return; }
+      setForgotSuccess("Password reset successfully! You can now sign in.");
+      setShowForgotPw(false);
+    } catch { setForgotError("Network error. Please try again."); }
+    finally { setForgotLoading(false); }
+  };
+
+  // ── Report Bug ───────────────────────────────────────────────────────────
+  const handleReportBug = async () => {
+    if (!bugReport.trim()) return;
+    setBugReportStatus("sending");
+    try {
+      await fetch("/api/contact", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: session ? `${session.firstName} ${session.lastName}` : "Unknown", message: bugReport, type: "bug", subject: "Bug Report" }),
+      });
+      setBugReportStatus("sent");
+      setBugReport("");
+      setTimeout(() => { setShowReportBug(false); setBugReportStatus("idle"); }, 2500);
+    } catch { setBugReportStatus("idle"); }
+  };
+
   const handleSignOut = () => {
     clearSession(); setSession(null); setSignInPhone(""); setSignInPassword(""); setError(null);
+    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    setShowInactivityWarning(false);
   };
 
   const handleSaveSettings = async () => {
@@ -871,6 +996,15 @@ export default function MyAccountPage() {
                         <Button className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm" onClick={handleSignIn} disabled={isLoading}>
                           {isLoading ? "Signing in…" : "Sign In"}
                         </Button>
+                        <div className="flex justify-center">
+                          <button
+                            type="button"
+                            className="text-xs text-blue-600 hover:underline font-medium"
+                            onClick={() => { setShowForgotPw(true); setForgotStep("email"); setForgotEmail(""); setForgotPhone(""); setForgotError(null); setForgotSuccess(null); }}
+                          >
+                            Forgot password?
+                          </button>
+                        </div>
                         <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-50 rounded-lg p-3">
                           <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-500" />
                           Your information is kept private and secure.
@@ -975,9 +1109,55 @@ export default function MyAccountPage() {
                         </div>
                       </div>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={handleSignOut} className="text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg">
-                      <LogOut className="w-4 h-4 mr-1.5" /> Sign out
-                    </Button>
+                    <div className="relative" ref={profileMenuRef}>
+                      <button
+                        onClick={() => setShowProfileMenu((v) => !v)}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                      >
+                        <div className="w-7 h-7 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                          {session.firstName[0]}{session.lastName[0]}
+                        </div>
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                      <AnimatePresence>
+                        {showProfileMenu && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                            transition={{ duration: 0.12 }}
+                            className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50"
+                          >
+                            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+                              <p className="text-sm font-bold text-slate-900">{session.firstName} {session.lastName}</p>
+                              <p className="text-xs text-slate-500">{session.phoneNumber}</p>
+                            </div>
+                            <div className="py-1">
+                              <button
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                onClick={() => { setActiveSection("settings"); setShowProfileMenu(false); }}
+                              >
+                                <Settings className="w-4 h-4 text-slate-400" /> Settings
+                              </button>
+                              <button
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                onClick={() => { setShowReportBug(true); setShowProfileMenu(false); }}
+                              >
+                                <Bug className="w-4 h-4 text-slate-400" /> Report a bug
+                              </button>
+                            </div>
+                            <div className="border-t border-slate-100 py-1">
+                              <button
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                onClick={handleSignOut}
+                              >
+                                <LogOut className="w-4 h-4" /> Sign out
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
 
                   {/* Quick stats */}
@@ -1048,6 +1228,44 @@ export default function MyAccountPage() {
                     </button>
                   </div>
                 )}
+
+                {/* ── Onboarding Progress ── */}
+                {session.onboardingStatus !== "active" && (() => {
+                  const steps = [
+                    { label: "Account created", done: true },
+                    { label: "Phone verified", done: ["phone_verified", "bank_linked", "active"].includes(session.onboardingStatus) },
+                    { label: "Bank linked", done: ["bank_linked", "active"].includes(session.onboardingStatus) },
+                    { label: "Ready to text!", done: session.onboardingStatus === "active" },
+                  ];
+                  const doneCount = steps.filter((s) => s.done).length;
+                  const pct = Math.round((doneCount / steps.length) * 100);
+                  return (
+                    <div className="bg-white border border-blue-100 rounded-xl p-5 mb-5 shadow-sm">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">Setup progress</p>
+                          <p className="text-xs text-slate-500">{doneCount} of {steps.length} steps complete</p>
+                        </div>
+                        <span className="text-sm font-bold text-blue-700">{pct}%</span>
+                      </div>
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden mb-4">
+                        <div className="h-full bg-gradient-to-r from-blue-500 to-blue-700 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="grid grid-cols-4 gap-2">
+                        {steps.map((step, i) => (
+                          <div key={i} className="flex flex-col items-center gap-1.5 text-center">
+                            <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors",
+                              step.done ? "bg-blue-600 border-blue-600 text-white" : "bg-white border-slate-200 text-slate-400"
+                            )}>
+                              {step.done ? <Check className="w-3.5 h-3.5" /> : <span>{i + 1}</span>}
+                            </div>
+                            <span className={cn("text-xs leading-tight", step.done ? "text-slate-700 font-medium" : "text-slate-400")}>{step.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Nav tabs */}
                 <div className="flex bg-white border border-slate-200 rounded-xl p-1 mb-6 gap-1">
@@ -1766,6 +1984,234 @@ export default function MyAccountPage() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* ── Forgot Password Modal ── */}
+      <AnimatePresence>
+        {showForgotPw && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4"
+            onClick={(e) => e.target === e.currentTarget && setShowForgotPw(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Reset Password</h2>
+                  <p className="text-xs text-slate-500">
+                    {forgotStep === "email" ? "Email reset link" : forgotStep === "sms" ? "SMS OTP" : "Enter new password"}
+                  </p>
+                </div>
+                <button onClick={() => setShowForgotPw(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                {forgotSuccess ? (
+                  <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-emerald-800">Done!</p>
+                      <p className="text-xs text-emerald-700 mt-0.5">{forgotSuccess}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Method toggle */}
+                    {forgotStep !== "reset" && (
+                      <div className="flex rounded-xl overflow-hidden border border-slate-200">
+                        <button
+                          className={cn("flex-1 py-2 text-xs font-semibold transition-colors",
+                            forgotStep === "email" ? "bg-blue-700 text-white" : "text-slate-500 hover:bg-slate-50"
+                          )}
+                          onClick={() => { setForgotStep("email"); setForgotError(null); }}
+                        >Email link</button>
+                        <button
+                          className={cn("flex-1 py-2 text-xs font-semibold transition-colors",
+                            forgotStep === "sms" ? "bg-blue-700 text-white" : "text-slate-500 hover:bg-slate-50"
+                          )}
+                          onClick={() => { setForgotStep("sms"); setForgotError(null); }}
+                        >SMS OTP</button>
+                      </div>
+                    )}
+
+                    {forgotStep === "email" && (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-700">Email address</label>
+                        <div className="relative">
+                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <Input
+                            type="email" placeholder="your@email.com"
+                            className="pl-9 rounded-xl border-slate-200 h-10 text-sm"
+                            value={forgotEmail}
+                            onChange={(e) => setForgotEmail(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && handleForgotPassword()}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {forgotStep === "sms" && (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-700">Mobile number</label>
+                        <PhoneInput
+                          value={forgotPhone}
+                          onChange={(v) => setForgotPhone(v)}
+                          placeholder="(555) 123-4567"
+                        />
+                      </div>
+                    )}
+
+                    {forgotStep === "reset" && (
+                      <div className="space-y-3">
+                        <p className="text-xs text-slate-600">Enter the 6-digit code sent to your phone, then choose a new password.</p>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-slate-700">OTP Code</label>
+                          <Input
+                            value={forgotOtp}
+                            onChange={(e) => setForgotOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                            placeholder="000000"
+                            maxLength={6}
+                            className="h-10 font-mono tracking-widest text-center rounded-xl border-slate-200 text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-slate-700">New password</label>
+                          <div className="relative">
+                            <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <Input
+                              type="password"
+                              value={forgotNewPw}
+                              onChange={(e) => setForgotNewPw(e.target.value)}
+                              placeholder="Min 6 characters"
+                              className="pl-9 h-10 rounded-xl border-slate-200 text-sm"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {forgotError && (
+                      <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                        <AlertCircle className="w-4 h-4 shrink-0" />{forgotError}
+                      </div>
+                    )}
+
+                    <Button
+                      className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm"
+                      onClick={forgotStep === "reset" ? handleForgotOtpReset : handleForgotPassword}
+                      disabled={forgotLoading || (forgotStep === "email" && !forgotEmail.trim()) || (forgotStep === "sms" && forgotPhone.replace(/\D/g, "").length < 10) || (forgotStep === "reset" && (forgotOtp.length < 6 || forgotNewPw.length < 6))}
+                    >
+                      {forgotLoading ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Sending…</> :
+                        forgotStep === "reset" ? "Reset Password" :
+                        forgotStep === "sms" ? "Send OTP" : "Send Reset Link"}
+                    </Button>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Report Bug Modal ── */}
+      <AnimatePresence>
+        {showReportBug && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4"
+            onClick={(e) => e.target === e.currentTarget && setShowReportBug(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Bug className="w-4 h-4 text-red-500" />
+                  <h2 className="text-base font-bold text-slate-900">Report a Bug</h2>
+                </div>
+                <button onClick={() => setShowReportBug(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                {bugReportStatus === "sent" ? (
+                  <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-emerald-800">Bug reported — thank you!</p>
+                      <p className="text-xs text-emerald-700 mt-0.5">We'll look into it soon.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xs text-slate-500">Describe what happened and what you expected. We'll investigate.</p>
+                    <textarea
+                      value={bugReport}
+                      onChange={(e) => setBugReport(e.target.value)}
+                      placeholder="e.g. When I clicked 'Link Bank', nothing happened..."
+                      className="w-full min-h-[100px] text-sm border border-slate-200 rounded-xl px-3 py-2.5 placeholder:text-slate-400 resize-none outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition-shadow"
+                    />
+                    <Button
+                      className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm"
+                      onClick={handleReportBug}
+                      disabled={!bugReport.trim() || bugReportStatus === "sending"}
+                    >
+                      {bugReportStatus === "sending" ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Sending…</> : "Submit Report"}
+                    </Button>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Inactivity Warning Modal ── */}
+      <AnimatePresence>
+        {showInactivityWarning && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden"
+            >
+              <div className="p-6 text-center">
+                <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Clock className="w-7 h-7 text-amber-600" />
+                </div>
+                <h2 className="text-base font-bold text-slate-900 mb-1">Still there?</h2>
+                <p className="text-sm text-slate-500 mb-5">
+                  You've been inactive for 30 minutes. We'll sign you out in 60 seconds for your security.
+                </p>
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1 rounded-xl border-slate-200 text-slate-700 h-10 text-sm"
+                    onClick={handleSignOut}
+                  >
+                    Sign Out
+                  </Button>
+                  <Button
+                    className="flex-1 bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm"
+                    onClick={() => { setShowInactivityWarning(false); resetInactivityTimer(); }}
+                  >
+                    Keep Me Signed In
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </PublicLayout>
   );
 }
