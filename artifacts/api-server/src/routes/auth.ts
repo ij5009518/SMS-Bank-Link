@@ -6,6 +6,7 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { sendSms, normalizeE164 } from "../lib/signalwire.js";
 import { sendWelcomeEmail, sendEmailVerificationEmail, sendDeviceVerificationEmail } from "../lib/email.js";
+import { OAuth2Client } from "google-auth-library";
 
 const scryptAsync = promisify(scrypt);
 const router: IRouter = Router();
@@ -495,6 +496,124 @@ router.post("/confirm-phone-change", async (req, res) => {
 
   const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, userId));
   res.json({ success: true, user: safeUser(updated, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+});
+
+// ── Google Sign-In ──────────────────────────────────────────────────────────
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+
+router.get("/google/config", (_req, res) => {
+  res.json({ clientId: GOOGLE_CLIENT_ID || null });
+});
+
+router.post("/google", async (req, res) => {
+  const { credential } = req.body as { credential?: string };
+  if (!credential) return res.status(400).json({ error: "bad_request", message: "Google credential is required." });
+  if (!GOOGLE_CLIENT_ID) {
+    return res.status(503).json({ error: "not_configured", message: "Google Sign-In is not configured on this server." });
+  }
+
+  // Verify the Google ID token
+  let payload: { sub: string; email: string; given_name?: string; family_name?: string; name?: string; email_verified?: boolean } | null = null;
+  try {
+    const client = new OAuth2Client(GOOGLE_CLIENT_ID);
+    const ticket = await client.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
+    payload = ticket.getPayload() as typeof payload;
+  } catch (err) {
+    console.error("[Google Auth] Token verification failed:", err instanceof Error ? err.message : err);
+    return res.status(401).json({ error: "invalid_token", message: "Could not verify your Google account. Please try again." });
+  }
+
+  if (!payload || !payload.sub || !payload.email) {
+    return res.status(401).json({ error: "invalid_token", message: "Incomplete Google profile. Please try again." });
+  }
+
+  const { sub: googleId, email, given_name: firstName, family_name: lastName } = payload;
+  const normalizedEmail = email.toLowerCase();
+
+  // Try to find existing user by google_id or email
+  const allUsers = await db.select().from(usersTable);
+  let user = allUsers.find((u) => u.googleId === googleId) ?? allUsers.find((u) => u.email?.toLowerCase() === normalizedEmail);
+
+  if (user) {
+    // Link google_id if not already linked
+    if (!user.googleId) {
+      await db.update(usersTable).set({ googleId }).where(eq(usersTable.id, user.id));
+    }
+    const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, user.id));
+    return res.json({ success: true, user: safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+  }
+
+  // New Google user — needs phone number to complete registration
+  return res.status(200).json({
+    needs_phone: true,
+    google_id: googleId,
+    email: normalizedEmail,
+    first_name: firstName || "",
+    last_name: lastName || "",
+  });
+});
+
+// ── Google Sign-In: complete registration (new user, add phone) ─────────────
+router.post("/google/complete", async (req, res) => {
+  const { googleId, email, firstName, lastName, phoneNumber } = req.body as {
+    googleId?: string; email?: string; firstName?: string; lastName?: string; phoneNumber?: string;
+  };
+
+  if (!googleId || !email || !phoneNumber) {
+    return res.status(400).json({ error: "bad_request", message: "Google ID, email, and phone number are required." });
+  }
+
+  const normalized = phoneNumber.replace(/\D/g, "");
+  if (normalized.length < 10) {
+    return res.status(400).json({ error: "bad_phone", message: "Please enter a valid phone number." });
+  }
+
+  // Check for duplicates
+  const allUsers = await db.select().from(usersTable);
+  const phoneConflict = allUsers.find((u) => u.phoneNumber.replace(/\D/g, "") === normalized);
+  if (phoneConflict) {
+    return res.status(409).json({ error: "duplicate_phone", message: "That phone number is already registered. Try signing in instead." });
+  }
+  const googleConflict = allUsers.find((u) => u.googleId === googleId);
+  if (googleConflict) {
+    const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, googleConflict.id));
+    return res.json({ success: true, user: safeUser(googleConflict, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+  }
+
+  // Generate email verification token
+  const emailVerificationToken = randomBytes(36).toString("hex");
+  const emailVerificationTokenExpiry = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+  try {
+    const [user] = await db.insert(usersTable).values({
+      phoneNumber: normalized,
+      email: email.toLowerCase(),
+      firstName: firstName || "User",
+      lastName: lastName || "",
+      googleId,
+      smsConsent: false,
+      optedOut: false,
+      onboardingStatus: "pending",
+      phoneVerified: false,
+      emailVerified: false,
+      emailVerificationToken,
+      emailVerificationTokenExpiry,
+    }).returning();
+
+    const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, user.id));
+
+    // Send welcome email
+    sendWelcomeEmail(email, user.firstName, normalized, emailVerificationToken)
+      .catch((e) => console.error("[Google Complete] Email failed:", e instanceof Error ? e.message : e));
+
+    return res.status(201).json({ success: true, user: safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+  } catch (e: unknown) {
+    const msg = String((e as Record<string, unknown>)?.message || "");
+    if (msg.includes("23505") || msg.includes("unique")) {
+      return res.status(409).json({ error: "duplicate", message: "An account with that phone or email already exists." });
+    }
+    return res.status(500).json({ error: "server_error", message: "Could not create account. Please try again." });
+  }
 });
 
 export { hashPassword };

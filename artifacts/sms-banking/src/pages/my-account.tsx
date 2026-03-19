@@ -103,6 +103,15 @@ export default function MyAccountPage() {
   const [signInPhone, setSignInPhone] = useState("");
   const [signInPassword, setSignInPassword] = useState("");
 
+  // Google Sign-In
+  const googleBtnRef = useRef<HTMLDivElement>(null);
+  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  const [googleStep, setGoogleStep] = useState<"idle" | "needs_phone">("idle");
+  const [googleProfile, setGoogleProfile] = useState<{ googleId: string; email: string; firstName: string; lastName: string } | null>(null);
+  const [googlePhone, setGooglePhone] = useState("");
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleError, setGoogleError] = useState<string | null>(null);
+
   // Device verification state (shown after correct password on new device)
   const [deviceStep, setDeviceStep] = useState<"idle" | "verify">("idle");
   const [deviceUserId, setDeviceUserId] = useState<number | null>(null);
@@ -223,6 +232,79 @@ export default function MyAccountPage() {
   const userAccounts = (freshUser as {
     accounts?: Array<{ id: number; bankName: string; accountType: string; accountLastFour: string; nickname: string; currentBalance: number }>;
   } | undefined)?.accounts ?? [];
+
+  // ── Google Sign-In initialization ─────────────────────────────────────────
+  useEffect(() => {
+    fetch("/api/auth/google/config").then((r) => r.json()).then((data: { clientId: string | null }) => {
+      setGoogleClientId(data.clientId);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!googleClientId || !googleBtnRef.current || session) return;
+    const g = (window as Window & { google?: { accounts: { id: { initialize: (o: Record<string, unknown>) => void; renderButton: (el: HTMLElement, o: Record<string, unknown>) => void } } } }).google;
+    if (!g) return;
+    g.accounts.id.initialize({
+      client_id: googleClientId,
+      callback: handleGoogleCredential,
+      auto_select: false,
+    });
+    if (googleBtnRef.current) {
+      googleBtnRef.current.innerHTML = "";
+      g.accounts.id.renderButton(googleBtnRef.current, {
+        type: "standard",
+        theme: "outline",
+        size: "large",
+        text: "signin_with",
+        shape: "rectangular",
+        width: 320,
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [googleClientId, session, tab]);
+
+  const handleGoogleCredential = async (response: { credential: string }) => {
+    setGoogleError(null); setGoogleLoading(true);
+    try {
+      const res = await fetch("/api/auth/google", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential: response.credential }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setGoogleError(data.message || "Google sign-in failed."); return; }
+      if (data.needs_phone) {
+        setGoogleProfile({ googleId: data.google_id, email: data.email, firstName: data.first_name, lastName: data.last_name });
+        setGoogleStep("needs_phone");
+        return;
+      }
+      if (data.user) {
+        const u = data.user;
+        const sess: SessionUser = { id: u.id, firstName: u.firstName, lastName: u.lastName, phoneNumber: u.phoneNumber, onboardingStatus: u.onboardingStatus, optedOut: u.optedOut };
+        saveSession(sess); setSession(sess);
+      }
+    } catch { setGoogleError("Network error. Please try again."); }
+    finally { setGoogleLoading(false); }
+  };
+
+  const handleGoogleComplete = async () => {
+    if (!googleProfile) return;
+    setGoogleLoading(true); setGoogleError(null);
+    try {
+      const res = await fetch("/api/auth/google/complete", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...googleProfile, phoneNumber: googlePhone }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setGoogleError(data.message || "Could not complete sign-up."); return; }
+      if (data.user) {
+        const u = data.user;
+        const sess: SessionUser = { id: u.id, firstName: u.firstName, lastName: u.lastName, phoneNumber: u.phoneNumber, onboardingStatus: u.onboardingStatus, optedOut: u.optedOut };
+        saveSession(sess); setSession(sess);
+        setGoogleStep("idle"); setGoogleProfile(null); setGooglePhone("");
+      }
+    } catch { setGoogleError("Network error. Please try again."); }
+    finally { setGoogleLoading(false); }
+  };
 
   const handleSignIn = async () => {
     setError(null);
@@ -708,9 +790,60 @@ export default function MyAccountPage() {
                     </motion.div>
                   )}
 
-                  {tab === "signin" && deviceStep === "idle" && (
+                  {tab === "signin" && deviceStep === "idle" && googleStep === "needs_phone" && googleProfile && (
+                    <motion.div key="google-phone" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}>
+                      <div className="p-6 space-y-4">
+                        <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                          <div className="w-9 h-9 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center font-bold text-sm text-blue-700">
+                            {googleProfile.firstName?.[0] || googleProfile.email[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{googleProfile.firstName} {googleProfile.lastName}</p>
+                            <p className="text-xs text-slate-500">{googleProfile.email}</p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-600">One more step — we need your mobile number so you can text banking commands.</p>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-slate-700">Mobile Number</label>
+                          <div className="relative">
+                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <Input type="tel" placeholder="(555) 123-4567" value={googlePhone}
+                              onChange={(e) => { setGooglePhone(e.target.value); setGoogleError(null); }}
+                              onKeyDown={(e) => e.key === "Enter" && googlePhone.replace(/\D/g, "").length >= 10 && handleGoogleComplete()}
+                              className="pl-9 h-10 border-slate-200 rounded-xl text-sm" />
+                          </div>
+                        </div>
+                        {googleError && <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5"><AlertCircle className="w-4 h-4 shrink-0" />{googleError}</div>}
+                        <Button className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm" onClick={handleGoogleComplete}
+                          disabled={googleLoading || googlePhone.replace(/\D/g, "").length < 10}>
+                          {googleLoading ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Creating account…</> : "Complete Sign-Up"}
+                        </Button>
+                        <button className="w-full text-center text-xs text-slate-400 hover:text-slate-600" onClick={() => { setGoogleStep("idle"); setGoogleProfile(null); setGoogleError(null); }}>
+                          Use a different account
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {tab === "signin" && deviceStep === "idle" && googleStep === "idle" && (
                     <motion.div key="signin" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }}>
                       <div className="p-6 space-y-4">
+                        {/* Google Sign-In */}
+                        {googleClientId && (
+                          <div className="space-y-3">
+                            {googleError && (
+                              <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+                                <AlertCircle className="w-4 h-4 shrink-0" />{googleError}
+                              </div>
+                            )}
+                            <div ref={googleBtnRef} className="flex justify-center" />
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 h-px bg-slate-200" />
+                              <span className="text-xs text-slate-400 font-medium">or sign in with phone</span>
+                              <div className="flex-1 h-px bg-slate-200" />
+                            </div>
+                          </div>
+                        )}
                         <div className="space-y-1.5">
                           <label className="text-xs font-semibold text-slate-700">Mobile Number</label>
                           <div className="relative">
