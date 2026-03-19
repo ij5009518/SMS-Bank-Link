@@ -26,7 +26,7 @@ router.post("/", async (req, res) => {
   const [alert] = await db.insert(alertsTable).values({
     userId,
     alertType,
-    threshold: threshold !== undefined ? String(threshold) : null,
+    threshold: threshold != null ? String(threshold) : null,
     channel: channel ?? "sms",
     enabled: enabled !== false,
   }).returning();

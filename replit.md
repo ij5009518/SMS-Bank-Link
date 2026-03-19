@@ -59,6 +59,10 @@ artifacts-monorepo/
 - Profile dropdown (settings, report bug, sign out)
 - Onboarding progress map (4 steps with progress bar)
 - Report Bug modal (submits to contact API)
+- **Real-time financial summary** — Total Balance + Credit Debt cards always visible above tabs
+- **6 nav tabs**: Accounts, Transactions, Spending, Alerts, SMS, Settings
+- **Spending tab** — AI-powered spending breakdown by category (Today / This Month toggle); colored bar chart per category; full categories management (list, edit color/name/keywords, create custom, delete)
+- **Alerts tab** — configure proactive SMS alerts: Low Balance ($ threshold), Credit Limit Near Max (% threshold), Large Transaction ($ threshold), Transfer Cleared; each with on/off toggle
 
 ### Admin Dashboard (/admin)
 - Overview stats (users, accounts, SMS activity)

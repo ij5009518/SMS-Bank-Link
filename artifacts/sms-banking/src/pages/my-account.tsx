@@ -30,6 +30,17 @@ import {
   Bug,
   X,
   Clock,
+  PieChart,
+  Pencil,
+  Tag,
+  Wallet,
+  TrendingDown,
+  BarChart3,
+  AlertTriangle,
+  BellRing,
+  ArrowRightLeft,
+  Landmark,
+  Save,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -94,7 +105,10 @@ const statusConfig = (status: string) => {
   return { label: "Pending", cls: "bg-slate-100 text-slate-600 border-slate-200" };
 };
 
-type Section = "accounts" | "activity" | "sms" | "settings";
+type Section = "accounts" | "activity" | "spend" | "alerts" | "sms" | "settings";
+
+type Category = { id: number; name: string; color: string; icon: string; keywords: string[]; isSystem: boolean };
+type AlertRow = { id: number; alertType: string; threshold: string | null; channel: string; enabled: boolean };
 
 export default function MyAccountPage() {
   const [tab, setTab] = useState<"signin" | "signup">("signin");
@@ -103,6 +117,23 @@ export default function MyAccountPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<Section>("accounts");
+
+  // Categories
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [catLoading, setCatLoading] = useState(false);
+  const [editingCat, setEditingCat] = useState<number | null>(null);
+  const [editCatName, setEditCatName] = useState("");
+  const [editCatColor, setEditCatColor] = useState("#3b82f6");
+  const [editCatKeywords, setEditCatKeywords] = useState("");
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatColor, setNewCatColor] = useState("#3b82f6");
+  const [newCatKeywords, setNewCatKeywords] = useState("");
+  const [catSaving, setCatSaving] = useState(false);
+  const [spendPeriod, setSpendPeriod] = useState<"today" | "month">("month");
+
+  // Alerts
+  const [alertRows, setAlertRows] = useState<AlertRow[]>([]);
+  const [alertSaving, setAlertSaving] = useState<Record<string, boolean>>({});
 
   // Sign-in
   const [signInPhone, setSignInPhone] = useState("");
@@ -259,6 +290,28 @@ export default function MyAccountPage() {
 
   const { data: transactions, refetch: refetchTransactions } = useGetUserTransactions(session?.id ?? 0, {}, { query: { enabled: !!session, refetchInterval: 60000 } });
   const { data: smsLogs } = useGetSmsLogs({ userId: session?.id, limit: 20 }, { query: { enabled: !!session, refetchInterval: 15000 } });
+
+  const fetchCategories = async () => {
+    if (!session) return;
+    setCatLoading(true);
+    try {
+      const res = await fetch(`/api/users/${session.id}/categories`);
+      if (res.ok) setCategories(await res.json());
+    } catch { /* noop */ } finally { setCatLoading(false); }
+  };
+
+  const fetchAlerts = async () => {
+    if (!session) return;
+    try {
+      const res = await fetch(`/api/users/${session.id}/alerts`);
+      if (res.ok) setAlertRows(await res.json());
+    } catch { /* noop */ }
+  };
+
+  useEffect(() => {
+    if (session?.id) { fetchCategories(); fetchAlerts(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id]);
 
   const userAccounts = (freshUser as {
     accounts?: Array<{ id: number; bankName: string; accountType: string; accountLastFour: string; nickname: string; currentBalance: number }>;
@@ -825,6 +878,8 @@ export default function MyAccountPage() {
   const navItems: { key: Section; label: string; icon: typeof Building2 }[] = [
     { key: "accounts", label: "Accounts", icon: Building2 },
     { key: "activity", label: "Transactions", icon: CreditCard },
+    { key: "spend", label: "Spending", icon: PieChart },
+    { key: "alerts", label: "Alerts", icon: Bell },
     { key: "sms", label: "SMS", icon: MessageSquare },
     { key: "settings", label: "Settings", icon: Settings },
   ];
@@ -1267,8 +1322,37 @@ export default function MyAccountPage() {
                   );
                 })()}
 
+                {/* ── Real-time Financial Summary ── */}
+                {userAccounts.length > 0 && (() => {
+                  const depositAccounts = userAccounts.filter((a) => a.accountType !== "credit_card");
+                  const creditAccounts = userAccounts.filter((a) => a.accountType === "credit_card");
+                  const totalBalance = depositAccounts.reduce((s, a) => s + Number(a.currentBalance), 0);
+                  const totalDebt = creditAccounts.reduce((s, a) => s + Math.max(0, -Number(a.currentBalance)), 0);
+                  const fmt = (n: number) => "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                  return (
+                    <div className="grid grid-cols-2 gap-3 mb-5">
+                      <div className="bg-gradient-to-br from-blue-700 to-blue-900 rounded-2xl p-5 text-white">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Wallet className="w-4 h-4 text-blue-300" />
+                          <span className="text-xs font-semibold text-blue-300 uppercase tracking-wide">Total Balance</span>
+                        </div>
+                        <p className="text-2xl font-bold tracking-tight">{fmt(totalBalance)}</p>
+                        <p className="text-xs text-blue-300 mt-1">{depositAccounts.length} account{depositAccounts.length !== 1 ? "s" : ""}</p>
+                      </div>
+                      <div className="bg-white border border-slate-200 rounded-2xl p-5">
+                        <div className="flex items-center gap-2 mb-2">
+                          <TrendingDown className="w-4 h-4 text-red-400" />
+                          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Credit Debt</span>
+                        </div>
+                        <p className={cn("text-2xl font-bold tracking-tight", totalDebt > 0 ? "text-red-600" : "text-emerald-600")}>{fmt(totalDebt)}</p>
+                        <p className="text-xs text-slate-400 mt-1">{creditAccounts.length} card{creditAccounts.length !== 1 ? "s" : ""}</p>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Nav tabs */}
-                <div className="flex bg-white border border-slate-200 rounded-xl p-1 mb-6 gap-1">
+                <div className="flex bg-white border border-slate-200 rounded-xl p-1 mb-6 gap-1 overflow-x-auto no-scrollbar">
                   {navItems.map(({ key, label, icon: Icon }) => (
                     <button key={key} onClick={() => setActiveSection(key)}
                       className={cn("flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-semibold transition-all",
@@ -1434,6 +1518,334 @@ export default function MyAccountPage() {
                               })}
                           </div>
                         )}
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* ── Spending Analysis ── */}
+                  {activeSection === "spend" && (
+                    <motion.div key="spend" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
+
+                      {/* Period toggle */}
+                      <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1">
+                        {([["today", "Today"], ["month", "This Month"]] as const).map(([v, l]) => (
+                          <button key={v} onClick={() => setSpendPeriod(v)}
+                            className={cn("flex-1 py-2 rounded-lg text-sm font-semibold transition-all",
+                              spendPeriod === v ? "bg-blue-700 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"
+                            )}>
+                            {l}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Spending breakdown */}
+                      {(() => {
+                        const txns = (transactions as Array<{ id: number; merchantName: string; category: string; amount: number; type: string; transactionDate: string }> | undefined) ?? [];
+                        const now = new Date();
+                        const filtered = txns.filter((t) => {
+                          if (t.type !== "debit") return false;
+                          const d = new Date(t.transactionDate);
+                          if (spendPeriod === "today") {
+                            return d.toDateString() === now.toDateString();
+                          }
+                          return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+                        });
+
+                        if (filtered.length === 0) {
+                          return (
+                            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
+                              <BarChart3 className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                              <p className="font-semibold text-slate-700 mb-1">No spending {spendPeriod === "today" ? "today" : "this month"}</p>
+                              <p className="text-xs text-slate-400">Transactions will appear here as they sync from your bank.</p>
+                            </div>
+                          );
+                        }
+
+                        const catMap: Record<string, number> = {};
+                        for (const t of filtered) {
+                          const cat = t.category || "other";
+                          catMap[cat] = (catMap[cat] ?? 0) + Math.abs(Number(t.amount));
+                        }
+                        const total = Object.values(catMap).reduce((a, b) => a + b, 0);
+                        const sorted = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+
+                        const catColors: Record<string, string> = {
+                          food: "#f97316", dining: "#f97316", groceries: "#84cc16",
+                          transport: "#3b82f6", gas: "#6366f1", travel: "#8b5cf6",
+                          entertainment: "#ec4899", shopping: "#f59e0b",
+                          utilities: "#14b8a6", health: "#10b981", medical: "#10b981",
+                          housing: "#64748b", rent: "#64748b",
+                          education: "#0ea5e9", personal: "#a78bfa",
+                          other: "#94a3b8",
+                        };
+
+                        const getCatColor = (cat: string) => {
+                          const userCat = categories.find((c) => c.name.toLowerCase() === cat.toLowerCase());
+                          return userCat?.color ?? catColors[cat.toLowerCase()] ?? "#94a3b8";
+                        };
+
+                        return (
+                          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                              <div>
+                                <h3 className="font-bold text-slate-900 text-sm">
+                                  Spending {spendPeriod === "today" ? "Today" : "This Month"}
+                                </h3>
+                                <p className="text-xs text-slate-400 mt-0.5">
+                                  Total: <span className="font-semibold text-slate-700">${total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                  {" "}· {filtered.length} transaction{filtered.length !== 1 ? "s" : ""}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-xs text-blue-600 font-semibold bg-blue-50 px-2.5 py-1 rounded-full">
+                                <PieChart className="w-3.5 h-3.5" /> AI
+                              </div>
+                            </div>
+                            <div className="divide-y divide-slate-100">
+                              {sorted.map(([cat, amt]) => {
+                                const pct = Math.round((amt / total) * 100);
+                                const color = getCatColor(cat);
+                                return (
+                                  <div key={cat} className="px-5 py-3.5">
+                                    <div className="flex items-center justify-between mb-1.5">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className="w-3 h-3 rounded-full shrink-0" style={{ background: color }} />
+                                        <span className="text-sm font-medium text-slate-700 capitalize">{cat}</span>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                        <span className="text-xs text-slate-400">{pct}%</span>
+                                        <span className="text-sm font-bold text-slate-900">${amt.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                      </div>
+                                    </div>
+                                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: color }} />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Categories Management */}
+                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                          <div>
+                            <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                              <Tag className="w-4 h-4 text-slate-500" /> Spending Categories
+                            </h3>
+                            <p className="text-xs text-slate-400 mt-0.5">Customize how transactions are grouped</p>
+                          </div>
+                          {catLoading && <RefreshCw className="w-4 h-4 text-slate-400 animate-spin" />}
+                        </div>
+
+                        {/* Category list */}
+                        <div className="divide-y divide-slate-100">
+                          {categories.map((cat) => (
+                            <div key={cat.id} className="px-5 py-3.5">
+                              {editingCat === cat.id ? (
+                                <div className="space-y-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <input type="color" value={editCatColor} onChange={(e) => setEditCatColor(e.target.value)}
+                                      className="w-8 h-8 rounded-lg border-0 cursor-pointer p-0.5 bg-transparent" />
+                                    <Input value={editCatName} onChange={(e) => setEditCatName(e.target.value)}
+                                      placeholder="Category name" className="h-9 border-slate-200 rounded-lg text-sm flex-1" />
+                                  </div>
+                                  <Input value={editCatKeywords} onChange={(e) => setEditCatKeywords(e.target.value)}
+                                    placeholder="Keywords (comma-separated): coffee, starbucks, cafe" className="h-9 border-slate-200 rounded-lg text-sm" />
+                                  <div className="flex gap-2">
+                                    <Button size="sm" disabled={catSaving || !editCatName.trim()}
+                                      className="bg-blue-700 hover:bg-blue-800 text-white rounded-lg h-8 text-xs px-3"
+                                      onClick={async () => {
+                                        if (!session) return;
+                                        setCatSaving(true);
+                                        try {
+                                          const res = await fetch(`/api/users/${session.id}/categories/${cat.id}`, {
+                                            method: "PATCH", headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ name: editCatName.trim(), color: editCatColor, keywords: editCatKeywords.split(",").map((k) => k.trim()).filter(Boolean) }),
+                                          });
+                                          if (res.ok) { await fetchCategories(); setEditingCat(null); }
+                                        } finally { setCatSaving(false); }
+                                      }}>
+                                      <Save className="w-3 h-3 mr-1" />{catSaving ? "Saving…" : "Save"}
+                                    </Button>
+                                    <Button size="sm" variant="ghost" className="h-8 text-xs px-3 rounded-lg text-slate-500" onClick={() => setEditingCat(null)}>Cancel</Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-3">
+                                  <div className="w-3 h-3 rounded-full shrink-0" style={{ background: cat.color || "#94a3b8" }} />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-slate-800">{cat.name}</p>
+                                    {cat.keywords.length > 0 && (
+                                      <p className="text-xs text-slate-400 mt-0.5 truncate">{cat.keywords.join(", ")}</p>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    {cat.isSystem && <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">built-in</span>}
+                                    <button className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"
+                                      onClick={() => { setEditingCat(cat.id); setEditCatName(cat.name); setEditCatColor(cat.color || "#94a3b8"); setEditCatKeywords(cat.keywords.join(", ")); }}>
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    {!cat.isSystem && (
+                                      <button className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
+                                        onClick={async () => {
+                                          if (!session || !confirm(`Delete "${cat.name}"?`)) return;
+                                          await fetch(`/api/users/${session.id}/categories/${cat.id}`, { method: "DELETE" });
+                                          fetchCategories();
+                                        }}>
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Add new category */}
+                        <div className="px-5 py-4 border-t border-slate-100 bg-slate-50 space-y-2.5">
+                          <p className="text-xs font-semibold text-slate-600">Add Custom Category</p>
+                          <div className="flex items-center gap-2">
+                            <input type="color" value={newCatColor} onChange={(e) => setNewCatColor(e.target.value)}
+                              className="w-8 h-8 rounded-lg border-0 cursor-pointer p-0.5 bg-transparent" />
+                            <Input value={newCatName} onChange={(e) => setNewCatName(e.target.value)}
+                              placeholder="Category name (e.g. Subscriptions)" className="h-9 border-slate-200 rounded-lg text-sm flex-1" />
+                          </div>
+                          <Input value={newCatKeywords} onChange={(e) => setNewCatKeywords(e.target.value)}
+                            placeholder="Keywords: netflix, spotify, hulu" className="h-9 border-slate-200 rounded-lg text-sm" />
+                          <Button size="sm" disabled={catSaving || !newCatName.trim()}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg h-8 text-xs px-4"
+                            onClick={async () => {
+                              if (!session) return;
+                              setCatSaving(true);
+                              try {
+                                const res = await fetch(`/api/users/${session.id}/categories`, {
+                                  method: "POST", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ name: newCatName.trim(), color: newCatColor, keywords: newCatKeywords.split(",").map((k) => k.trim()).filter(Boolean) }),
+                                });
+                                if (res.ok) { await fetchCategories(); setNewCatName(""); setNewCatColor("#3b82f6"); setNewCatKeywords(""); }
+                              } finally { setCatSaving(false); }
+                            }}>
+                            <Plus className="w-3 h-3 mr-1" />{catSaving ? "Adding…" : "Add Category"}
+                          </Button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* ── Alerts Configuration ── */}
+                  {activeSection === "alerts" && (
+                    <motion.div key="alerts" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
+
+                      <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-3">
+                        <BellRing className="w-5 h-5 text-blue-700 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-semibold text-blue-900">Proactive SMS Alerts</p>
+                          <p className="text-xs text-blue-700 mt-0.5">Get a text message when something important happens with your accounts — before you even have to ask.</p>
+                        </div>
+                      </div>
+
+                      {alertRows.length === 0 ? (
+                        <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center">
+                          <Bell className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                          <p className="font-semibold text-slate-700 mb-2">No alerts configured</p>
+                          <p className="text-xs text-slate-400 mb-4">Click the button below to set up your first alert.</p>
+                          <Button
+                            className="bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm px-5"
+                            onClick={async () => {
+                              if (!session) return;
+                              const defaults = [
+                                { alertType: "low_balance", threshold: "100", channel: "sms", enabled: true },
+                                { alertType: "credit_near_limit", threshold: "90", channel: "sms", enabled: true },
+                                { alertType: "large_transaction", threshold: "500", channel: "sms", enabled: true },
+                                { alertType: "transfer_cleared", threshold: null, channel: "sms", enabled: false },
+                              ];
+                              for (const d of defaults) {
+                                await fetch(`/api/users/${session.id}/alerts`, {
+                                  method: "POST", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify(d),
+                                });
+                              }
+                              fetchAlerts();
+                            }}
+                          >
+                            <Plus className="w-4 h-4 mr-2" /> Set Up Alerts
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100">
+                          {alertRows.map((alert) => {
+                            const alertMeta: Record<string, { label: string; desc: string; icon: typeof Bell; thresholdLabel?: string; thresholdSuffix?: string }> = {
+                              low_balance: { label: "Low Balance Alert", desc: "Get notified when any account balance drops below a threshold.", icon: AlertTriangle, thresholdLabel: "Alert when balance falls below", thresholdSuffix: "$" },
+                              credit_near_limit: { label: "Credit Limit Warning", desc: "Get notified when your credit utilization exceeds a percentage.", icon: CreditCard, thresholdLabel: "Alert when utilization exceeds", thresholdSuffix: "%" },
+                              large_transaction: { label: "Large Transaction", desc: "Get alerted when a single charge or transfer is unusually large.", icon: Landmark, thresholdLabel: "Alert for transactions over", thresholdSuffix: "$" },
+                              transfer_cleared: { label: "Transfer Cleared", desc: "Get a confirmation SMS when a transfer or deposit clears.", icon: ArrowRightLeft, thresholdLabel: undefined },
+                            };
+                            const meta = alertMeta[alert.alertType] ?? { label: alert.alertType, desc: "", icon: Bell };
+                            const IconEl = meta.icon;
+                            const isSavingThis = alertSaving[alert.alertType];
+                            const saveAlert = async (patch: Partial<AlertRow>) => {
+                              if (!session) return;
+                              setAlertSaving((prev) => ({ ...prev, [alert.alertType]: true }));
+                              try {
+                                await fetch(`/api/users/${session.id}/alerts/${alert.id}`, {
+                                  method: "PATCH", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify(patch),
+                                });
+                                await fetchAlerts();
+                              } finally { setAlertSaving((prev) => ({ ...prev, [alert.alertType]: false })); }
+                            };
+                            return (
+                              <div key={alert.id} className={cn("px-5 py-4 transition-colors", !alert.enabled && "opacity-60")}>
+                                <div className="flex items-start gap-4">
+                                  <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5", alert.enabled ? "bg-blue-50" : "bg-slate-100")}>
+                                    <IconEl className={cn("w-5 h-5", alert.enabled ? "text-blue-700" : "text-slate-400")} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-3 mb-0.5">
+                                      <p className="font-semibold text-slate-900 text-sm">{meta.label}</p>
+                                      <button
+                                        disabled={isSavingThis}
+                                        onClick={() => saveAlert({ enabled: !alert.enabled })}
+                                        className={cn("relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none",
+                                          alert.enabled ? "bg-emerald-500" : "bg-slate-200",
+                                          isSavingThis && "opacity-50 cursor-not-allowed"
+                                        )}>
+                                        <span className={cn("inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform",
+                                          alert.enabled ? "translate-x-5" : "translate-x-0"
+                                        )} />
+                                      </button>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mb-3">{meta.desc}</p>
+                                    {meta.thresholdLabel && alert.enabled && (
+                                      <div className="flex items-center gap-2">
+                                        <label className="text-xs font-medium text-slate-600 whitespace-nowrap">{meta.thresholdLabel}</label>
+                                        <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden h-8 bg-slate-50 w-28">
+                                          {meta.thresholdSuffix === "$" && <span className="text-sm text-slate-500 pl-2.5 pr-1">$</span>}
+                                          <input
+                                            type="number"
+                                            defaultValue={alert.threshold ?? ""}
+                                            onBlur={(e) => saveAlert({ threshold: e.target.value })}
+                                            className="flex-1 h-full text-sm px-1.5 bg-transparent outline-none text-slate-800 w-full"
+                                            min={0}
+                                          />
+                                          {meta.thresholdSuffix === "%" && <span className="text-sm text-slate-500 pr-2.5">%</span>}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-start gap-3">
+                        <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                        <p className="text-xs text-slate-500 leading-relaxed">Alerts are sent via SMS to your registered phone number. Standard messaging rates may apply. You can turn off all alerts by texting <code className="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-mono text-[11px]">STOP</code> at any time.</p>
                       </div>
                     </motion.div>
                   )}
