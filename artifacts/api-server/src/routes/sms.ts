@@ -12,6 +12,7 @@ import { SimulateSmsBody } from "@workspace/api-zod";
 import { eq, desc, and } from "drizzle-orm";
 import { listAccounts, getBalance, listTransactions } from "../lib/teller.js";
 import { sendSms, normalizeE164, isConfigured } from "../lib/signalwire.js";
+import { dispatchSimulateCommand } from "./smsDispatch.js";
 
 const router: IRouter = Router();
 
@@ -245,26 +246,19 @@ router.post("/simulate", async (req, res) => {
       .where(eq(tellerEnrollmentsTable.userId, userId))
       .limit(1);
 
-    let responseText = "";
-
-    if (cmd === "HELP") {
-      responseText = "TextBank Commands:\nBAL - All balances\nBAL [nick] - One account\nTRANS - Last 5 transactions\nTRANS [n] - Last N transactions\nLAST - Most recent transaction\nLIMIT - Credit card limits\nSPEND - Monthly spend total\nSTOP - Opt out\nSTART - Re-subscribe";
-    } else if (cmd === "STOP") {
-      await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, userId));
-      responseText = "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
-    } else if (cmd === "BAL" || cmd.startsWith("BAL ")) {
-      responseText = await handleBalance(cmd, userId, enrollment?.accessToken);
-    } else if (cmd === "TRANS" || cmd.startsWith("TRANS ")) {
-      responseText = await handleTransactions(cmd, userId, enrollment?.accessToken);
-    } else if (cmd === "LAST") {
-      responseText = await handleLastTransaction(userId, enrollment?.accessToken);
-    } else if (cmd === "LIMIT") {
-      responseText = await handleCreditLimit(userId, enrollment?.accessToken);
-    } else if (cmd === "SPEND") {
-      responseText = await handleSpend(userId, enrollment?.accessToken);
-    } else {
-      responseText = "Unknown command. Reply HELP for available commands.";
-    }
+    const responseText = await dispatchSimulateCommand(cmd, {
+      help: () => "TextBank Commands:\nBAL - All balances\nBAL [nick] - One account\nTRANS - Last 5 transactions\nTRANS [n] - Last N transactions\nLAST - Most recent transaction\nLIMIT - Credit card limits\nSPEND - Monthly spend total\nSTOP - Opt out\nSTART - Re-subscribe",
+      stop: async () => {
+        await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, userId));
+        return "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
+      },
+      balance: (currentCmd) => handleBalance(currentCmd, userId, enrollment?.accessToken),
+      transactions: (currentCmd) => handleTransactions(currentCmd, userId, enrollment?.accessToken),
+      last: () => handleLastTransaction(userId, enrollment?.accessToken),
+      limit: () => handleCreditLimit(userId, enrollment?.accessToken),
+      spend: () => handleSpend(userId, enrollment?.accessToken),
+      unknown: () => "Unknown command. Reply HELP for available commands.",
+    });
 
     // Send real SMS if configured
     let smsSid: string | null = null;
