@@ -11,6 +11,7 @@ import {
 import { SimulateSmsBody } from "@workspace/api-zod";
 import { eq, desc, and } from "drizzle-orm";
 import { listAccounts, getBalance, listTransactions } from "../lib/teller.js";
+import { decryptTellerAccessToken } from "../lib/security.js";
 import { sendSms, normalizeE164, isConfigured } from "../lib/signalwire.js";
 
 const router: IRouter = Router();
@@ -124,15 +125,15 @@ router.post("/webhook", async (req, res) => {
       await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, user.id));
       responseText = "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
     } else if (cmd === "BAL" || cmd.startsWith("BAL ")) {
-      responseText = await handleBalance(cmd, user.id, enrollment?.accessToken);
+      responseText = await handleBalance(cmd, user.id, enrollment ? decryptTellerAccessToken(enrollment) : undefined);
     } else if (cmd === "TRANS" || cmd.startsWith("TRANS ")) {
-      responseText = await handleTransactions(cmd, user.id, enrollment?.accessToken);
+      responseText = await handleTransactions(cmd, user.id, enrollment ? decryptTellerAccessToken(enrollment) : undefined);
     } else if (cmd === "LAST") {
-      responseText = await handleLastTransaction(user.id, enrollment?.accessToken);
+      responseText = await handleLastTransaction(user.id, enrollment ? decryptTellerAccessToken(enrollment) : undefined);
     } else if (cmd === "LIMIT") {
-      responseText = await handleCreditLimit(user.id, enrollment?.accessToken);
+      responseText = await handleCreditLimit(user.id, enrollment ? decryptTellerAccessToken(enrollment) : undefined);
     } else if (cmd === "SPEND") {
-      responseText = await handleSpend(user.id, enrollment?.accessToken);
+      responseText = await handleSpend(user.id, enrollment ? decryptTellerAccessToken(enrollment) : undefined);
     } else {
       responseText = "Unknown command. Reply HELP for available commands.";
     }
@@ -253,15 +254,15 @@ router.post("/simulate", async (req, res) => {
       await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, userId));
       responseText = "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
     } else if (cmd === "BAL" || cmd.startsWith("BAL ")) {
-      responseText = await handleBalance(cmd, userId, enrollment?.accessToken);
+      responseText = await handleBalance(cmd, userId, enrollment ? decryptTellerAccessToken(enrollment) : undefined);
     } else if (cmd === "TRANS" || cmd.startsWith("TRANS ")) {
-      responseText = await handleTransactions(cmd, userId, enrollment?.accessToken);
+      responseText = await handleTransactions(cmd, userId, enrollment ? decryptTellerAccessToken(enrollment) : undefined);
     } else if (cmd === "LAST") {
-      responseText = await handleLastTransaction(userId, enrollment?.accessToken);
+      responseText = await handleLastTransaction(userId, enrollment ? decryptTellerAccessToken(enrollment) : undefined);
     } else if (cmd === "LIMIT") {
-      responseText = await handleCreditLimit(userId, enrollment?.accessToken);
+      responseText = await handleCreditLimit(userId, enrollment ? decryptTellerAccessToken(enrollment) : undefined);
     } else if (cmd === "SPEND") {
-      responseText = await handleSpend(userId, enrollment?.accessToken);
+      responseText = await handleSpend(userId, enrollment ? decryptTellerAccessToken(enrollment) : undefined);
     } else {
       responseText = "Unknown command. Reply HELP for available commands.";
     }
@@ -307,12 +308,12 @@ async function handleBalance(cmd: string, userId: number, accessToken?: string):
     try {
       const allEnrollments = await db.select().from(tellerEnrollmentsTable).where(eq(tellerEnrollmentsTable.userId, userId));
       const allTellerAccounts = (
-        await Promise.allSettled(allEnrollments.map((e) => listAccounts(e.accessToken)))
+        await Promise.allSettled(allEnrollments.map((e) => listAccounts(decryptTellerAccessToken(e))))
       )
         .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof listAccounts>>> => r.status === "fulfilled")
         .flatMap((r) => r.value);
 
-      const enrollmentMap = new Map(allEnrollments.map((e) => [e.enrollmentId, e.accessToken]));
+      const enrollmentMap = new Map(allEnrollments.map((e) => [e.enrollmentId, decryptTellerAccessToken(e)]));
 
       if (allTellerAccounts.length === 0) {
         return "No accounts found. Please visit our website to re-link your bank.";
@@ -373,7 +374,7 @@ async function handleTransactions(cmd: string, userId: number, accessToken?: str
       const firstGoodEnrollment = allEnrollments[0];
       if (!firstGoodEnrollment) throw new Error("no enrollment");
 
-      const tellerAccounts = await listAccounts(firstGoodEnrollment.accessToken);
+      const tellerAccounts = await listAccounts(decryptTellerAccessToken(firstGoodEnrollment));
       if (tellerAccounts.length === 0) {
         return "No accounts linked. Visit our website to re-link your bank.";
       }
@@ -387,7 +388,7 @@ async function handleTransactions(cmd: string, userId: number, accessToken?: str
             a.last_four.includes(arg)
           ) ?? tellerAccounts[0];
 
-      const txns = await listTransactions(firstGoodEnrollment.accessToken, targetAccount.id, count);
+      const txns = await listTransactions(decryptTellerAccessToken(firstGoodEnrollment), targetAccount.id, count);
       if (txns.length === 0) return "No recent transactions found.";
 
       const lines = txns.map((t) => {
@@ -425,10 +426,10 @@ async function handleLastTransaction(userId: number, accessToken?: string): Prom
       const [enrollment] = await db.select().from(tellerEnrollmentsTable).where(eq(tellerEnrollmentsTable.userId, userId));
       if (!enrollment) throw new Error("no enrollment");
 
-      const accounts = await listAccounts(enrollment.accessToken);
+      const accounts = await listAccounts(decryptTellerAccessToken(enrollment));
       if (accounts.length === 0) return "No accounts linked.";
 
-      const txns = await listTransactions(enrollment.accessToken, accounts[0].id, 1);
+      const txns = await listTransactions(decryptTellerAccessToken(enrollment), accounts[0].id, 1);
       if (txns.length === 0) return "No transactions found.";
 
       const t = txns[0];
@@ -460,7 +461,7 @@ async function handleCreditLimit(userId: number, accessToken?: string): Promise<
       const allEnrollments = await db.select().from(tellerEnrollmentsTable).where(eq(tellerEnrollmentsTable.userId, userId));
 
       const allAccounts = (
-        await Promise.allSettled(allEnrollments.map((e) => listAccounts(e.accessToken)))
+        await Promise.allSettled(allEnrollments.map((e) => listAccounts(decryptTellerAccessToken(e))))
       )
         .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof listAccounts>>> => r.status === "fulfilled")
         .flatMap((r) => r.value);
@@ -473,7 +474,7 @@ async function handleCreditLimit(userId: number, accessToken?: string): Promise<
         return "No credit card accounts found. Reply BAL for all account balances.";
       }
 
-      const enrollmentMap = new Map(allEnrollments.map((e) => [e.enrollmentId, e.accessToken]));
+      const enrollmentMap = new Map(allEnrollments.map((e) => [e.enrollmentId, decryptTellerAccessToken(e)]));
 
       const lines = await Promise.all(
         creditAccounts.map(async (acct) => {
@@ -521,7 +522,7 @@ async function handleSpend(userId: number, accessToken?: string): Promise<string
       const firstEnrollment = allEnrollments[0];
       if (!firstEnrollment) throw new Error("no enrollment");
 
-      const accounts = await listAccounts(firstEnrollment.accessToken);
+      const accounts = await listAccounts(decryptTellerAccessToken(firstEnrollment));
       if (accounts.length === 0) return "No accounts linked.";
 
       let totalSpend = 0;
@@ -529,7 +530,7 @@ async function handleSpend(userId: number, accessToken?: string): Promise<string
 
       await Promise.all(
         accounts.map(async (acct) => {
-          const txns = await listTransactions(firstEnrollment.accessToken, acct.id, 50);
+          const txns = await listTransactions(decryptTellerAccessToken(firstEnrollment), acct.id, 50);
           for (const t of txns) {
             if (t.type !== "debit") continue;
             if (new Date(t.date) < monthStart) continue;
