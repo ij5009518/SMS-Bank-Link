@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { sendWelcomeEmail } from "../lib/email.js";
+import { sendContactNotificationEmail } from "../lib/email.js";
 
 const router: IRouter = Router();
 
@@ -9,19 +9,51 @@ router.post("/", async (req, res) => {
     name?: string; email?: string; subject?: string; message?: string; type?: string;
   };
 
-  if (!name?.trim() || !message?.trim()) {
-    return res.status(400).json({ error: "bad_request", message: "Name and message are required." });
+  if (!name?.trim() || !email?.trim() || !subject?.trim() || !message?.trim() || !type?.trim()) {
+    return res.status(400).json({
+      error: "bad_request",
+      message: "Name, email, subject, message, and type are required.",
+    });
   }
 
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@textbanks.com";
-  const msgType = type || "contact";
+  const normalizedEmail = email.trim();
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
+  if (!isValidEmail) {
+    return res.status(400).json({
+      error: "bad_request",
+      message: "A valid email address is required.",
+    });
+  }
 
-  console.log(`[Contact] New ${msgType} from ${name} <${email}>: ${subject || "(no subject)"}`);
-  console.log(`[Contact] Message: ${message.slice(0, 200)}`);
+  const payload = {
+    name: name.trim(),
+    email: normalizedEmail,
+    subject: subject.trim(),
+    message: message.trim(),
+    type: type.trim(),
+  };
 
-  // Try to send email notification to admin (fire-and-forget)
-  sendWelcomeEmail(adminEmail, "Admin", "", undefined)
-    .catch(() => {});
+  const sent = await sendContactNotificationEmail(payload);
+  if (!sent) {
+    console.error("[Contact] Failed to process contact submission", {
+      route: "/api/contact",
+      type: payload.type,
+      name: payload.name,
+      email: payload.email || null,
+      subject: payload.subject || null,
+      messageLength: payload.message.length,
+    });
+    return res.status(502).json({ error: "email_delivery_failed", message: "Unable to process your request right now. Please try again shortly." });
+  }
+
+  console.log("[Contact] Contact submission processed successfully", {
+    route: "/api/contact",
+    type: payload.type,
+    name: payload.name,
+    email: payload.email || null,
+    subject: payload.subject || null,
+    messageLength: payload.message.length,
+  });
 
   return res.json({ success: true, message: "Thank you! We'll get back to you soon." });
 });
