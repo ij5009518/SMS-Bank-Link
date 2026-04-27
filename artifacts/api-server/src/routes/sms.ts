@@ -12,8 +12,27 @@ import { SimulateSmsBody } from "@workspace/api-zod";
 import { eq, desc, and } from "drizzle-orm";
 import { listAccounts, getBalance, listTransactions } from "../lib/teller.js";
 import { sendSms, normalizeE164, isConfigured } from "../lib/signalwire.js";
+import { createRouteLimiter } from "../middleware/security.js";
 
 const router: IRouter = Router();
+
+const smsWebhookLimiter = createRouteLimiter({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: "Too many SMS webhook requests.",
+});
+
+const smsDemoLimiter = createRouteLimiter({
+  windowMs: 5 * 60 * 1000,
+  max: 40,
+  message: "Too many demo requests. Please wait before trying again.",
+});
+
+const smsSimulateLimiter = createRouteLimiter({
+  windowMs: 5 * 60 * 1000,
+  max: 25,
+  message: "Too many simulation requests. Please wait before trying again.",
+});
 
 router.get("/logs", async (req, res) => {
   const userId = req.query.userId ? parseInt(req.query.userId as string) : null;
@@ -44,7 +63,7 @@ router.get("/status", (_req, res) => {
 });
 
 // SignalWire inbound webhook (LaML/TwiML-compatible)
-router.post("/webhook", async (req, res) => {
+router.post("/webhook", smsWebhookLimiter, async (req, res) => {
   try {
     const from: string = req.body?.From || req.body?.from || "";
     const body: string = req.body?.Body || req.body?.body || "";
@@ -159,7 +178,7 @@ router.post("/webhook", async (req, res) => {
 });
 
 // Public landing-page demo — no auth, no userId, hardcoded virtual account
-router.post("/demo", (req, res) => {
+router.post("/demo", smsDemoLimiter, (req, res) => {
   const raw = (req.body as { command?: string }).command ?? "";
   const cmd = raw.trim().toUpperCase();
 
@@ -218,7 +237,7 @@ router.post("/demo", (req, res) => {
 });
 
 // Simulate SMS (for testing via dashboard — still sends real SMS if configured)
-router.post("/simulate", async (req, res) => {
+router.post("/simulate", smsSimulateLimiter, async (req, res) => {
   try {
     const body = SimulateSmsBody.parse(req.body);
     const { userId, command } = body;

@@ -7,9 +7,28 @@ import { promisify } from "util";
 import { sendSms, normalizeE164 } from "../lib/signalwire.js";
 import { sendWelcomeEmail, sendEmailVerificationEmail, sendDeviceVerificationEmail, sendPasswordResetEmail } from "../lib/email.js";
 import { OAuth2Client } from "google-auth-library";
+import { createRouteLimiter, enforceRetryLockout, recordRetryFailure, clearRetryFailures, retryPolicies } from "../middleware/security.js";
 
 const scryptAsync = promisify(scrypt);
 const router: IRouter = Router();
+
+const loginLimiter = createRouteLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 12,
+  message: "Too many login attempts. Please try again later.",
+});
+
+const otpLimiter = createRouteLimiter({
+  windowMs: 10 * 60 * 1000,
+  max: 12,
+  message: "Too many verification attempts. Please wait before trying again.",
+});
+
+const passwordResetLimiter = createRouteLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: "Too many password reset attempts. Please wait before trying again.",
+});
 
 function capitalizeName(name: string): string {
   return name.trim().replace(/\b\w/g, (c) => c.toUpperCase());
@@ -47,7 +66,7 @@ function maskEmail(email: string): string {
   return `${visible}${"*".repeat(Math.max(local.length - 2, 2))}@${domain}`;
 }
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   const { phoneNumber, password, deviceToken } = req.body as {
     phoneNumber?: string;
     password?: string;
@@ -59,21 +78,27 @@ router.post("/login", async (req, res) => {
   }
 
   const normalized = phoneNumber.replace(/\D/g, "");
+  const subject = normalized || "anonymous";
+
+  if (enforceRetryLockout(req, res, retryPolicies.userLogin, subject)) {
+    return;
+  }
+
   const allUsers = await db.select().from(usersTable);
   const user = allUsers.find((u) => u.phoneNumber.replace(/\D/g, "") === normalized);
 
-  if (!user) {
-    return res.status(401).json({ error: "invalid_credentials", message: "No account found for that phone number." });
-  }
-
-  if (!user.passwordHash) {
-    return res.status(401).json({ error: "no_password", message: "This account was registered without a password. Please use the register page to set one up." });
+  if (!user || !user.passwordHash) {
+    recordRetryFailure(req, retryPolicies.userLogin, subject);
+    return res.status(401).json({ error: "invalid_credentials", message: "Invalid phone number or password." });
   }
 
   const valid = await verifyPassword(password, user.passwordHash);
   if (!valid) {
-    return res.status(401).json({ error: "invalid_credentials", message: "Incorrect password." });
+    recordRetryFailure(req, retryPolicies.userLogin, subject);
+    return res.status(401).json({ error: "invalid_credentials", message: "Invalid phone number or password." });
   }
+
+  clearRetryFailures(req, retryPolicies.userLogin, subject);
 
   // Check if device is trusted
   if (deviceToken) {
@@ -175,8 +200,13 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-router.post("/verify-phone", async (req, res) => {
+router.post("/verify-phone", otpLimiter, async (req, res) => {
   const { userId, code } = req.body as { userId?: number; code?: string };
+  const subject = String(userId ?? "anonymous");
+
+  if (enforceRetryLockout(req, res, retryPolicies.otp, subject)) {
+    return;
+  }
 
   if (!userId || !code) {
     return res.status(400).json({ error: "bad_request", message: "User ID and verification code are required." });
@@ -184,7 +214,8 @@ router.post("/verify-phone", async (req, res) => {
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
   if (!user) {
-    return res.status(404).json({ error: "not_found", message: "User not found." });
+    recordRetryFailure(req, retryPolicies.otp, String(userId));
+    return res.status(404).json({ error: "not_found", message: "Invalid or expired verification code." });
   }
 
   if (user.phoneVerified) {
@@ -196,12 +227,16 @@ router.post("/verify-phone", async (req, res) => {
   }
 
   if (new Date() > new Date(user.phoneVerificationExpiry)) {
-    return res.status(400).json({ error: "code_expired", message: "This code has expired. Please request a new one." });
+    recordRetryFailure(req, retryPolicies.otp, subject);
+    return res.status(400).json({ error: "code_expired", message: "Invalid or expired verification code." });
   }
 
   if (user.phoneVerificationCode !== code.trim()) {
-    return res.status(400).json({ error: "invalid_code", message: "That code is incorrect. Please check your SMS and try again." });
+    recordRetryFailure(req, retryPolicies.otp, String(userId));
+    return res.status(400).json({ error: "invalid_code", message: "Invalid or expired verification code." });
   }
+
+  clearRetryFailures(req, retryPolicies.otp, subject);
 
   const [updated] = await db.update(usersTable)
     .set({ phoneVerified: true, phoneVerificationCode: null, phoneVerificationExpiry: null, onboardingStatus: "active" })
@@ -212,7 +247,7 @@ router.post("/verify-phone", async (req, res) => {
   res.json({ success: true, user: safeUser(updated, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
 });
 
-router.post("/resend-verification", async (req, res) => {
+router.post("/resend-verification", otpLimiter, async (req, res) => {
   const { userId } = req.body as { userId?: number };
 
   if (!userId) {
@@ -297,7 +332,7 @@ router.post("/resend-email-verification", async (req, res) => {
 // ── Device Verification ──
 
 // Step 1 — send a code to the user's email to verify this device
-router.post("/send-device-code", async (req, res) => {
+router.post("/send-device-code", otpLimiter, async (req, res) => {
   const { userId } = req.body as { userId?: number };
   if (!userId) return res.status(400).json({ error: "bad_request", message: "User ID is required." });
 
@@ -341,8 +376,12 @@ router.post("/send-device-code", async (req, res) => {
 });
 
 // Step 2 — verify the code and register this device as trusted
-router.post("/verify-device", async (req, res) => {
+router.post("/verify-device", otpLimiter, async (req, res) => {
   const { userId, code, deviceName } = req.body as { userId?: number; code?: string; deviceName?: string };
+  const subject = String(userId ?? "anonymous");
+  if (enforceRetryLockout(req, res, retryPolicies.otp, subject)) {
+    return;
+  }
   if (!userId || !code) return res.status(400).json({ error: "bad_request", message: "User ID and code are required." });
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
@@ -352,11 +391,15 @@ router.post("/verify-device", async (req, res) => {
     return res.status(400).json({ error: "no_code", message: "No verification code found. Please request a new one." });
   }
   if (new Date() > new Date(user.deviceVerificationExpiry)) {
-    return res.status(400).json({ error: "code_expired", message: "This code has expired. Please request a new one." });
+    recordRetryFailure(req, retryPolicies.otp, subject);
+    return res.status(400).json({ error: "code_expired", message: "Invalid or expired verification code." });
   }
   if (user.deviceVerificationCode !== code.trim()) {
-    return res.status(400).json({ error: "invalid_code", message: "Incorrect code. Check your email or phone and try again." });
+    recordRetryFailure(req, retryPolicies.otp, subject);
+    return res.status(400).json({ error: "invalid_code", message: "Invalid or expired verification code." });
   }
+
+  clearRetryFailures(req, retryPolicies.otp, subject);
 
   // Clear the code and create a trusted device record
   await db.update(usersTable)
@@ -381,7 +424,7 @@ router.post("/verify-device", async (req, res) => {
 });
 
 // Re-verify current phone (works even if already verified — resets to unverified)
-router.post("/reverify-phone", async (req, res) => {
+router.post("/reverify-phone", otpLimiter, async (req, res) => {
   const { userId } = req.body as { userId?: number };
 
   if (!userId) {
@@ -415,7 +458,7 @@ router.post("/reverify-phone", async (req, res) => {
 });
 
 // Request a phone number change — sends OTP to the NEW number
-router.post("/request-phone-change", async (req, res) => {
+router.post("/request-phone-change", otpLimiter, async (req, res) => {
   const { userId, newPhoneNumber } = req.body as { userId?: number; newPhoneNumber?: string };
 
   if (!userId || !newPhoneNumber) {
@@ -463,8 +506,13 @@ router.post("/request-phone-change", async (req, res) => {
 });
 
 // Confirm phone change — verify OTP sent to the new number
-router.post("/confirm-phone-change", async (req, res) => {
+router.post("/confirm-phone-change", otpLimiter, async (req, res) => {
   const { userId, code } = req.body as { userId?: number; code?: string };
+  const subject = String(userId ?? "anonymous");
+
+  if (enforceRetryLockout(req, res, retryPolicies.otp, subject)) {
+    return;
+  }
 
   if (!userId || !code) {
     return res.status(400).json({ error: "bad_request", message: "User ID and code are required." });
@@ -480,12 +528,16 @@ router.post("/confirm-phone-change", async (req, res) => {
   }
 
   if (new Date() > new Date(user.pendingPhoneExpiry)) {
-    return res.status(400).json({ error: "code_expired", message: "This code has expired. Please request a new one." });
+    recordRetryFailure(req, retryPolicies.otp, subject);
+    return res.status(400).json({ error: "code_expired", message: "Invalid or expired verification code." });
   }
 
   if (user.pendingPhoneCode !== code.trim()) {
-    return res.status(400).json({ error: "invalid_code", message: "That code is incorrect. Check your new number's SMS." });
+    recordRetryFailure(req, retryPolicies.otp, subject);
+    return res.status(400).json({ error: "invalid_code", message: "Invalid or expired verification code." });
   }
+
+  clearRetryFailures(req, retryPolicies.otp, subject);
 
   const [updated] = await db.update(usersTable)
     .set({
@@ -506,8 +558,14 @@ router.post("/confirm-phone-change", async (req, res) => {
 const WEBSITE_URL = process.env.WEBSITE_URL || "https://textbanks.app";
 
 // Step 1: request reset — by email (sends link) or by phone (sends SMS OTP)
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", passwordResetLimiter, async (req, res) => {
   const { identifier } = req.body as { identifier?: string };
+  const subject = (identifier || "anonymous").trim().toLowerCase();
+
+  if (enforceRetryLockout(req, res, retryPolicies.passwordReset, subject)) {
+    return;
+  }
+
   if (!identifier) return res.status(400).json({ error: "bad_request", message: "Email or phone number is required." });
 
   const isEmail = identifier.includes("@");
@@ -522,7 +580,10 @@ router.post("/forgot-password", async (req, res) => {
   }
 
   // Always respond 200 to prevent enumeration
-  if (!user) return res.json({ success: true, method: isEmail ? "email" : "sms" });
+  if (!user) {
+    recordRetryFailure(req, retryPolicies.passwordReset, subject);
+    return res.json({ success: true, method: isEmail ? "email" : "sms" });
+  }
 
   if (isEmail && user.email) {
     const token = randomBytes(40).toString("hex");
@@ -531,6 +592,7 @@ router.post("/forgot-password", async (req, res) => {
     const resetUrl = `${WEBSITE_URL}/my-account?reset_token=${token}`;
     sendPasswordResetEmail(user.email, user.firstName, resetUrl)
       .catch((e) => console.error("[Auth] Password reset email failed:", e instanceof Error ? e.message : e));
+    clearRetryFailures(req, retryPolicies.passwordReset, subject);
     return res.json({ success: true, method: "email" });
   } else {
     // SMS OTP
@@ -542,42 +604,64 @@ router.post("/forgot-password", async (req, res) => {
       sendSms(e164, `Your Text Banks password reset code is: ${otp}\n\nExpires in 15 minutes. Do not share it.`)
         .catch((e) => console.error("[Auth] Password reset SMS failed:", e instanceof Error ? e.message : e));
     }
+    clearRetryFailures(req, retryPolicies.passwordReset, subject);
     return res.json({ success: true, method: "sms", userId: user.id });
   }
 });
 
 // Step 2a: Reset via email token
-router.post("/reset-password-token", async (req, res) => {
+router.post("/reset-password-token", passwordResetLimiter, async (req, res) => {
   const { token, newPassword } = req.body as { token?: string; newPassword?: string };
+  const subject = (token || "anonymous").trim().toLowerCase();
+
+  if (enforceRetryLockout(req, res, retryPolicies.passwordReset, subject)) {
+    return;
+  }
   if (!token || !newPassword) return res.status(400).json({ error: "bad_request", message: "Token and new password are required." });
   if (newPassword.length < 6) return res.status(400).json({ error: "bad_request", message: "Password must be at least 6 characters." });
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.passwordResetToken, token));
-  if (!user) return res.status(404).json({ error: "invalid_token", message: "This reset link is invalid or has already been used." });
+  if (!user) {
+    recordRetryFailure(req, retryPolicies.passwordReset, subject);
+    return res.status(404).json({ error: "invalid_token", message: "Unable to reset password with that code." });
+  }
   if (user.passwordResetTokenExpiry && new Date() > new Date(user.passwordResetTokenExpiry)) {
-    return res.status(400).json({ error: "token_expired", message: "This reset link has expired. Please request a new one." });
+    recordRetryFailure(req, retryPolicies.passwordReset, subject);
+    return res.status(400).json({ error: "token_expired", message: "Unable to reset password with that code." });
   }
 
+  clearRetryFailures(req, retryPolicies.passwordReset, subject);
   const passwordHash = await hashPassword(newPassword);
   await db.update(usersTable).set({ passwordHash, passwordResetToken: null, passwordResetTokenExpiry: null }).where(eq(usersTable.id, user.id));
   return res.json({ success: true, message: "Your password has been updated. You can now sign in." });
 });
 
 // Step 2b: Reset via SMS OTP
-router.post("/reset-password-otp", async (req, res) => {
+router.post("/reset-password-otp", passwordResetLimiter, async (req, res) => {
   const { userId, otp, newPassword } = req.body as { userId?: number; otp?: string; newPassword?: string };
+  const subject = `${userId ?? "anonymous"}:${otp ?? ""}`.trim().toLowerCase();
+
+  if (enforceRetryLockout(req, res, retryPolicies.passwordReset, subject)) {
+    return;
+  }
   if (!userId || !otp || !newPassword) return res.status(400).json({ error: "bad_request", message: "User ID, OTP, and new password are required." });
   if (newPassword.length < 6) return res.status(400).json({ error: "bad_request", message: "Password must be at least 6 characters." });
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
-  if (!user) return res.status(404).json({ error: "not_found", message: "User not found." });
+  if (!user) {
+    recordRetryFailure(req, retryPolicies.passwordReset, subject);
+    return res.status(404).json({ error: "not_found", message: "Unable to reset password with that code." });
+  }
   if (!user.passwordResetOtp || user.passwordResetOtp !== otp) {
-    return res.status(401).json({ error: "invalid_otp", message: "Incorrect code. Please try again." });
+    recordRetryFailure(req, retryPolicies.passwordReset, subject);
+    return res.status(401).json({ error: "invalid_otp", message: "Unable to reset password with that code." });
   }
   if (user.passwordResetOtpExpiry && new Date() > new Date(user.passwordResetOtpExpiry)) {
-    return res.status(400).json({ error: "otp_expired", message: "This code has expired. Please request a new one." });
+    recordRetryFailure(req, retryPolicies.passwordReset, subject);
+    return res.status(400).json({ error: "otp_expired", message: "Unable to reset password with that code." });
   }
 
+  clearRetryFailures(req, retryPolicies.passwordReset, subject);
   const passwordHash = await hashPassword(newPassword);
   await db.update(usersTable).set({ passwordHash, passwordResetOtp: null, passwordResetOtpExpiry: null }).where(eq(usersTable.id, user.id));
   return res.json({ success: true, message: "Your password has been updated. You can now sign in." });
