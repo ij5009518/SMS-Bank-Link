@@ -12,6 +12,7 @@ import { SimulateSmsBody } from "@workspace/api-zod";
 import { eq, desc, and } from "drizzle-orm";
 import { listAccounts, getBalance, listTransactions } from "../lib/teller.js";
 import { sendSms, normalizeE164, isConfigured } from "../lib/signalwire.js";
+import { normalizePhoneDigits } from "../lib/phone-normalization.js";
 
 const router: IRouter = Router();
 
@@ -56,32 +57,26 @@ router.post("/webhook", async (req, res) => {
 
     const cmd = body.trim().toUpperCase();
     const normalizedPhone = normalizeE164(from);
-    const digitsOnly = from.replace(/\D/g, "").replace(/^1/, "");
+    const digitsOnly = normalizePhoneDigits(from);
 
     // Find user by phone — check primary number first, then secondary linked numbers
-    const allUsers = await db.select().from(usersTable);
-    let user = allUsers.find((u) => {
-      const uDigits = u.phoneNumber.replace(/\D/g, "").replace(/^1/, "");
-      return uDigits === digitsOnly;
-    });
+    let user: typeof usersTable.$inferSelect | undefined;
+    if (digitsOnly) {
+      [user] = await db.select().from(usersTable).where(eq(usersTable.phoneNumberDigits, digitsOnly));
+    }
 
     if (!user) {
       // Check secondary (linked) phone numbers
-      const secondary = await db.select().from(phoneNumbersTable)
-        .where(and(
-          eq(phoneNumbersTable.phoneNumber, normalizedPhone.replace(/\D/g, "")),
-          eq(phoneNumbersTable.verified, true)
-        ));
-      if (secondary.length > 0) {
-        user = allUsers.find((u) => u.id === secondary[0].userId);
+      let secondary: typeof phoneNumbersTable.$inferSelect | undefined;
+      if (digitsOnly) {
+        [secondary] = await db.select().from(phoneNumbersTable)
+          .where(and(eq(phoneNumbersTable.phoneNumberDigits, digitsOnly), eq(phoneNumbersTable.verified, true)));
+      } else if (normalizedPhone) {
+        [secondary] = await db.select().from(phoneNumbersTable)
+          .where(and(eq(phoneNumbersTable.phoneNumberE164, normalizedPhone), eq(phoneNumbersTable.verified, true)));
       }
-      if (!user) {
-        // Try digits-only match on secondary numbers
-        const allSecondary = await db.select().from(phoneNumbersTable).where(eq(phoneNumbersTable.verified, true));
-        const match = allSecondary.find((p) => p.phoneNumber.replace(/\D/g, "").replace(/^1/, "") === digitsOnly);
-        if (match) {
-          user = allUsers.find((u) => u.id === match.userId);
-        }
+      if (secondary) {
+        [user] = await db.select().from(usersTable).where(eq(usersTable.id, secondary.userId));
       }
     }
 
