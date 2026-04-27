@@ -12,8 +12,16 @@ import { SimulateSmsBody } from "@workspace/api-zod";
 import { eq, desc, and } from "drizzle-orm";
 import { listAccounts, getBalance, listTransactions } from "../lib/teller.js";
 import { sendSms, normalizeE164, isConfigured } from "../lib/signalwire.js";
+import { requireAuth } from "../middleware/auth.js";
 
 const router: IRouter = Router();
+
+const PUBLIC_SMS_PATHS = new Set(["/webhook", "/demo"]);
+
+router.use((req, res, next) => {
+  if (PUBLIC_SMS_PATHS.has(req.path)) return next();
+  return requireAuth(req, res, next);
+});
 
 router.get("/logs", async (req, res) => {
   const userId = req.query.userId ? parseInt(req.query.userId as string) : null;
