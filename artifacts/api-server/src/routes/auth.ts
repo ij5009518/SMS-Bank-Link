@@ -1,12 +1,13 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { usersTable, accountsTable, trustedDevicesTable } from "@workspace/db/schema";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, ne, or } from "drizzle-orm";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { sendSms, normalizeE164 } from "../lib/signalwire.js";
 import { sendWelcomeEmail, sendEmailVerificationEmail, sendDeviceVerificationEmail, sendPasswordResetEmail } from "../lib/email.js";
 import { OAuth2Client } from "google-auth-library";
+import { normalizePhoneDigits, normalizePhoneForStorage } from "../lib/phone-normalization.js";
 
 const scryptAsync = promisify(scrypt);
 const router: IRouter = Router();
@@ -58,9 +59,11 @@ router.post("/login", async (req, res) => {
     return res.status(400).json({ error: "bad_request", message: "Phone number and password are required." });
   }
 
-  const normalized = phoneNumber.replace(/\D/g, "");
-  const allUsers = await db.select().from(usersTable);
-  const user = allUsers.find((u) => u.phoneNumber.replace(/\D/g, "") === normalized);
+  const normalized = normalizePhoneDigits(phoneNumber);
+  if (!normalized) {
+    return res.status(400).json({ error: "bad_request", message: "Please enter a valid phone number." });
+  }
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.phoneNumberDigits, normalized));
 
   if (!user) {
     return res.status(401).json({ error: "invalid_credentials", message: "No account found for that phone number." });
@@ -118,7 +121,11 @@ router.post("/signup", async (req, res) => {
     return res.status(400).json({ error: "bad_request", message: "Password must be at least 6 characters." });
   }
 
-  const normalizedPhone = phoneNumber.replace(/\D/g, "");
+  const normalizedPhoneData = normalizePhoneForStorage(phoneNumber);
+  if (!normalizedPhoneData.canonicalDigits) {
+    return res.status(400).json({ error: "bad_request", message: "Please enter a valid phone number." });
+  }
+  const normalizedPhone = normalizedPhoneData.digits;
   const normalizedEmail = email?.trim().toLowerCase() || null;
   const passwordHash = await hashPassword(password);
   const verificationCode = generateVerificationCode();
@@ -129,7 +136,10 @@ router.post("/signup", async (req, res) => {
   try {
     const [user] = await db.insert(usersTable).values({
       phoneNumber: normalizedPhone,
+      phoneNumberDigits: normalizedPhoneData.canonicalDigits,
+      phoneNumberE164: normalizedPhoneData.e164,
       email: normalizedEmail,
+      emailNormalized: normalizedEmail,
       firstName: capitalizeName(firstName),
       lastName: capitalizeName(lastName),
       passwordHash,
@@ -427,16 +437,17 @@ router.post("/request-phone-change", async (req, res) => {
     return res.status(404).json({ error: "not_found", message: "User not found." });
   }
 
-  const normalizedNew = newPhoneNumber.replace(/\D/g, "");
-  if (normalizedNew.length < 10) {
+  const normalizedNewData = normalizePhoneForStorage(newPhoneNumber);
+  if (!normalizedNewData.canonicalDigits) {
     return res.status(400).json({ error: "bad_phone", message: "Please enter a valid phone number." });
   }
+  const normalizedNew = normalizedNewData.digits;
 
   // Make sure it's not already taken by another account
-  const allUsers = await db.select().from(usersTable);
-  const conflict = allUsers.find((u) =>
-    u.id !== userId && u.phoneNumber.replace(/\D/g, "").replace(/^1/, "") === normalizedNew.replace(/^1/, "")
-  );
+  const [conflict] = await db.select().from(usersTable).where(and(
+    eq(usersTable.phoneNumberDigits, normalizedNewData.canonicalDigits),
+    ne(usersTable.id, userId),
+  ));
   if (conflict) {
     return res.status(409).json({ error: "duplicate_phone", message: "That number is already linked to another account." });
   }
@@ -490,6 +501,8 @@ router.post("/confirm-phone-change", async (req, res) => {
   const [updated] = await db.update(usersTable)
     .set({
       phoneNumber: user.pendingPhoneNumber,
+      phoneNumberDigits: normalizePhoneForStorage(user.pendingPhoneNumber).canonicalDigits || user.phoneNumberDigits,
+      phoneNumberE164: normalizePhoneForStorage(user.pendingPhoneNumber).e164,
       phoneVerified: true,
       pendingPhoneNumber: null,
       pendingPhoneCode: null,
@@ -511,14 +524,15 @@ router.post("/forgot-password", async (req, res) => {
   if (!identifier) return res.status(400).json({ error: "bad_request", message: "Email or phone number is required." });
 
   const isEmail = identifier.includes("@");
-  const allUsers = await db.select().from(usersTable);
-
-  let user: typeof allUsers[number] | undefined;
+  let user: typeof usersTable.$inferSelect | undefined;
   if (isEmail) {
-    user = allUsers.find((u) => u.email?.toLowerCase() === identifier.toLowerCase().trim());
+    const normalizedEmail = identifier.toLowerCase().trim();
+    [user] = await db.select().from(usersTable).where(eq(usersTable.emailNormalized, normalizedEmail));
   } else {
-    const digits = identifier.replace(/\D/g, "");
-    user = allUsers.find((u) => u.phoneNumber.replace(/\D/g, "") === digits);
+    const digits = normalizePhoneDigits(identifier);
+    if (digits) {
+      [user] = await db.select().from(usersTable).where(eq(usersTable.phoneNumberDigits, digits));
+    }
   }
 
   // Always respond 200 to prevent enumeration
@@ -616,8 +630,9 @@ router.post("/google", async (req, res) => {
   const normalizedEmail = email.toLowerCase();
 
   // Try to find existing user by google_id or email
-  const allUsers = await db.select().from(usersTable);
-  let user = allUsers.find((u) => u.googleId === googleId) ?? allUsers.find((u) => u.email?.toLowerCase() === normalizedEmail);
+  const [user] = await db.select().from(usersTable).where(
+    or(eq(usersTable.googleId, googleId), eq(usersTable.emailNormalized, normalizedEmail))
+  );
 
   if (user) {
     // Link google_id if not already linked
@@ -648,18 +663,20 @@ router.post("/google/complete", async (req, res) => {
     return res.status(400).json({ error: "bad_request", message: "Google ID, email, and phone number are required." });
   }
 
-  const normalized = phoneNumber.replace(/\D/g, "");
-  if (normalized.length < 10) {
+  const normalizedPhoneData = normalizePhoneForStorage(phoneNumber);
+  if (!normalizedPhoneData.canonicalDigits) {
     return res.status(400).json({ error: "bad_phone", message: "Please enter a valid phone number." });
   }
+  const normalized = normalizedPhoneData.digits;
 
   // Check for duplicates
-  const allUsers = await db.select().from(usersTable);
-  const phoneConflict = allUsers.find((u) => u.phoneNumber.replace(/\D/g, "") === normalized);
+  const [phoneConflict] = await db.select().from(usersTable).where(
+    eq(usersTable.phoneNumberDigits, normalizedPhoneData.canonicalDigits)
+  );
   if (phoneConflict) {
     return res.status(409).json({ error: "duplicate_phone", message: "That phone number is already registered. Try signing in instead." });
   }
-  const googleConflict = allUsers.find((u) => u.googleId === googleId);
+  const [googleConflict] = await db.select().from(usersTable).where(eq(usersTable.googleId, googleId));
   if (googleConflict) {
     const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, googleConflict.id));
     return res.json({ success: true, user: safeUser(googleConflict, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
@@ -672,7 +689,10 @@ router.post("/google/complete", async (req, res) => {
   try {
     const [user] = await db.insert(usersTable).values({
       phoneNumber: normalized,
+      phoneNumberDigits: normalizedPhoneData.canonicalDigits,
+      phoneNumberE164: normalizedPhoneData.e164,
       email: email.toLowerCase(),
+      emailNormalized: email.toLowerCase(),
       firstName: firstName || "User",
       lastName: lastName || "",
       googleId,
