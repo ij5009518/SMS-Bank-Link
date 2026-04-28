@@ -21,6 +21,29 @@ const PUBLIC_SMS_PATHS = new Set(["/webhook", "/demo"]);
 router.use((req, res, next) => {
   if (PUBLIC_SMS_PATHS.has(req.path)) return next();
   return requireAuth(req, res, next);
+import { createRouteLimiter } from "../middleware/security.js";
+import { routeSimulateCommand } from "./simulate-command-routing.js";
+import { normalizePhoneDigits } from "../lib/phone-normalization.js";
+import { dispatchSimulateCommand } from "./smsDispatch.js";
+
+const router: IRouter = Router();
+
+const smsWebhookLimiter = createRouteLimiter({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: "Too many SMS webhook requests.",
+});
+
+const smsDemoLimiter = createRouteLimiter({
+  windowMs: 5 * 60 * 1000,
+  max: 40,
+  message: "Too many demo requests. Please wait before trying again.",
+});
+
+const smsSimulateLimiter = createRouteLimiter({
+  windowMs: 5 * 60 * 1000,
+  max: 25,
+  message: "Too many simulation requests. Please wait before trying again.",
 });
 
 router.get("/logs", async (req, res) => {
@@ -52,7 +75,7 @@ router.get("/status", (_req, res) => {
 });
 
 // SignalWire inbound webhook (LaML/TwiML-compatible)
-router.post("/webhook", async (req, res) => {
+router.post("/webhook", smsWebhookLimiter, async (req, res) => {
   try {
     const from: string = req.body?.From || req.body?.from || "";
     const body: string = req.body?.Body || req.body?.body || "";
@@ -64,32 +87,26 @@ router.post("/webhook", async (req, res) => {
 
     const cmd = body.trim().toUpperCase();
     const normalizedPhone = normalizeE164(from);
-    const digitsOnly = from.replace(/\D/g, "").replace(/^1/, "");
+    const digitsOnly = normalizePhoneDigits(from);
 
     // Find user by phone — check primary number first, then secondary linked numbers
-    const allUsers = await db.select().from(usersTable);
-    let user = allUsers.find((u) => {
-      const uDigits = u.phoneNumber.replace(/\D/g, "").replace(/^1/, "");
-      return uDigits === digitsOnly;
-    });
+    let user: typeof usersTable.$inferSelect | undefined;
+    if (digitsOnly) {
+      [user] = await db.select().from(usersTable).where(eq(usersTable.phoneNumberDigits, digitsOnly));
+    }
 
     if (!user) {
       // Check secondary (linked) phone numbers
-      const secondary = await db.select().from(phoneNumbersTable)
-        .where(and(
-          eq(phoneNumbersTable.phoneNumber, normalizedPhone.replace(/\D/g, "")),
-          eq(phoneNumbersTable.verified, true)
-        ));
-      if (secondary.length > 0) {
-        user = allUsers.find((u) => u.id === secondary[0].userId);
+      let secondary: typeof phoneNumbersTable.$inferSelect | undefined;
+      if (digitsOnly) {
+        [secondary] = await db.select().from(phoneNumbersTable)
+          .where(and(eq(phoneNumbersTable.phoneNumberDigits, digitsOnly), eq(phoneNumbersTable.verified, true)));
+      } else if (normalizedPhone) {
+        [secondary] = await db.select().from(phoneNumbersTable)
+          .where(and(eq(phoneNumbersTable.phoneNumberE164, normalizedPhone), eq(phoneNumbersTable.verified, true)));
       }
-      if (!user) {
-        // Try digits-only match on secondary numbers
-        const allSecondary = await db.select().from(phoneNumbersTable).where(eq(phoneNumbersTable.verified, true));
-        const match = allSecondary.find((p) => p.phoneNumber.replace(/\D/g, "").replace(/^1/, "") === digitsOnly);
-        if (match) {
-          user = allUsers.find((u) => u.id === match.userId);
-        }
+      if (secondary) {
+        [user] = await db.select().from(usersTable).where(eq(usersTable.id, secondary.userId));
       }
     }
 
@@ -167,7 +184,7 @@ router.post("/webhook", async (req, res) => {
 });
 
 // Public landing-page demo — no auth, no userId, hardcoded virtual account
-router.post("/demo", (req, res) => {
+router.post("/demo", smsDemoLimiter, (req, res) => {
   const raw = (req.body as { command?: string }).command ?? "";
   const cmd = raw.trim().toUpperCase();
 
@@ -226,7 +243,7 @@ router.post("/demo", (req, res) => {
 });
 
 // Simulate SMS (for testing via dashboard — still sends real SMS if configured)
-router.post("/simulate", async (req, res) => {
+router.post("/simulate", smsSimulateLimiter, async (req, res) => {
   try {
     const body = SimulateSmsBody.parse(req.body);
     const { userId, command } = body;
@@ -253,26 +270,31 @@ router.post("/simulate", async (req, res) => {
       .where(eq(tellerEnrollmentsTable.userId, userId))
       .limit(1);
 
-    let responseText = "";
-
-    if (cmd === "HELP") {
-      responseText = "TextBank Commands:\nBAL - All balances\nBAL [nick] - One account\nTRANS - Last 5 transactions\nTRANS [n] - Last N transactions\nLAST - Most recent transaction\nLIMIT - Credit card limits\nSPEND - Monthly spend total\nSTOP - Opt out\nSTART - Re-subscribe";
-    } else if (cmd === "STOP") {
-      await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, userId));
-      responseText = "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
-    } else if (cmd === "BAL" || cmd.startsWith("BAL ")) {
-      responseText = await handleBalance(cmd, userId, enrollment?.accessToken);
-    } else if (cmd === "TRANS" || cmd.startsWith("TRANS ")) {
-      responseText = await handleTransactions(cmd, userId, enrollment?.accessToken);
-    } else if (cmd === "LAST") {
-      responseText = await handleLastTransaction(userId, enrollment?.accessToken);
-    } else if (cmd === "LIMIT") {
-      responseText = await handleCreditLimit(userId, enrollment?.accessToken);
-    } else if (cmd === "SPEND") {
-      responseText = await handleSpend(userId, enrollment?.accessToken);
-    } else {
-      responseText = "Unknown command. Reply HELP for available commands.";
-    }
+    const responseText = await routeSimulateCommand(cmd, {
+      onHelp: () => "TextBank Commands:\nBAL - All balances\nBAL [nick] - One account\nTRANS - Last 5 transactions\nTRANS [n] - Last N transactions\nLAST - Most recent transaction\nLIMIT - Credit card limits\nSPEND - Monthly spend total\nSTOP - Opt out\nSTART - Re-subscribe",
+      onStop: async () => {
+        await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, userId));
+        return "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
+      },
+      onBalance: () => handleBalance(cmd, userId, enrollment?.accessToken),
+      onTransactions: () => handleTransactions(cmd, userId, enrollment?.accessToken),
+      onLast: () => handleLastTransaction(userId, enrollment?.accessToken),
+      onLimit: () => handleCreditLimit(userId, enrollment?.accessToken),
+      onSpend: () => handleSpend(userId, enrollment?.accessToken),
+      onUnknown: () => "Unknown command. Reply HELP for available commands.",
+    const responseText = await dispatchSimulateCommand(cmd, {
+      help: () => "TextBank Commands:\nBAL - All balances\nBAL [nick] - One account\nTRANS - Last 5 transactions\nTRANS [n] - Last N transactions\nLAST - Most recent transaction\nLIMIT - Credit card limits\nSPEND - Monthly spend total\nSTOP - Opt out\nSTART - Re-subscribe",
+      stop: async () => {
+        await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, userId));
+        return "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
+      },
+      balance: (currentCmd) => handleBalance(currentCmd, userId, enrollment?.accessToken),
+      transactions: (currentCmd) => handleTransactions(currentCmd, userId, enrollment?.accessToken),
+      last: () => handleLastTransaction(userId, enrollment?.accessToken),
+      limit: () => handleCreditLimit(userId, enrollment?.accessToken),
+      spend: () => handleSpend(userId, enrollment?.accessToken),
+      unknown: () => "Unknown command. Reply HELP for available commands.",
+    });
 
     // Send real SMS if configured
     let smsSid: string | null = null;
