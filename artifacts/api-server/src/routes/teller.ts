@@ -15,6 +15,7 @@ import {
   getTellerAppId,
   type TellerAccount,
 } from "../lib/teller.js";
+import { encryptTellerAccessToken, decryptTellerAccessToken } from "../lib/security.js";
 
 const router: IRouter = Router();
 
@@ -80,9 +81,21 @@ router.post("/enroll", async (req, res) => {
     const body = TellerEnrollBody.parse(req.body);
     const { userId, accessToken, enrollmentId, institutionName } = body;
 
+    const encryptedToken = encryptTellerAccessToken(accessToken);
     await db
       .insert(tellerEnrollmentsTable)
-      .values({ userId, enrollmentId, accessToken, institutionName })
+      .values({
+        userId,
+        enrollmentId,
+        accessToken: "__encrypted__",
+        accessTokenCiphertext: encryptedToken.ciphertext,
+        accessTokenCiphertextIv: encryptedToken.ciphertextIv,
+        accessTokenCiphertextTag: encryptedToken.ciphertextTag,
+        accessTokenWrappedDek: encryptedToken.wrappedDek,
+        accessTokenWrappedDekIv: encryptedToken.wrappedDekIv,
+        accessTokenWrappedDekTag: encryptedToken.wrappedDekTag,
+        institutionName,
+      })
       .onConflictDoNothing();
 
     let result: { linked: number; accounts: unknown[] };
@@ -134,7 +147,7 @@ router.post("/sync/:userId", async (req, res) => {
 
   for (const enrollment of enrollments) {
     try {
-      const { linked } = await syncAccountsForEnrollment(userId, enrollment.accessToken);
+      const { linked } = await syncAccountsForEnrollment(userId, decryptTellerAccessToken(enrollment));
       totalLinked += linked;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -171,13 +184,13 @@ router.get("/accounts/:userId", async (req, res) => {
 
   const results = await Promise.allSettled(
     enrollments.map(async (enrollment) => {
-      const tellerAccounts = await listAccounts(enrollment.accessToken);
+      const tellerAccounts = await listAccounts(decryptTellerAccessToken(enrollment));
       return Promise.all(
         tellerAccounts.map(async (acct) => {
           let availableBalance: number | null = null;
           let ledgerBalance: number | null = null;
           try {
-            const bal = await getBalance(enrollment.accessToken, acct.id);
+            const bal = await getBalance(decryptTellerAccessToken(enrollment), acct.id);
             availableBalance = parseFloat(bal.available);
             ledgerBalance = parseFloat(bal.ledger);
           } catch {
@@ -237,7 +250,7 @@ router.post("/sync-transactions/:userId", async (req, res) => {
 
   for (const enrollment of enrollments) {
     try {
-      const tellerAccounts = await listAccounts(enrollment.accessToken);
+      const tellerAccounts = await listAccounts(decryptTellerAccessToken(enrollment));
 
       for (const acct of tellerAccounts) {
         const dbAccount = await db
@@ -252,7 +265,7 @@ router.post("/sync-transactions/:userId", async (req, res) => {
         if (dbAccount.length === 0) continue;
         const accountId = dbAccount[0].id;
 
-        const txns = await listTransactions(enrollment.accessToken, acct.id, 25);
+        const txns = await listTransactions(decryptTellerAccessToken(enrollment), acct.id, 25);
 
         if (txns.length === 0) continue;
 
