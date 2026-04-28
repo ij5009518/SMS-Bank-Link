@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { categoriesTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import OpenAI from "openai";
 
 const router: IRouter = Router({ mergeParams: true });
@@ -118,8 +118,8 @@ router.patch("/:id", async (req, res) => {
 
   if (Object.keys(updates).length === 0) return res.status(400).json({ error: "bad_request", message: "Nothing to update." });
 
-  const [updated] = await db.update(categoriesTable).set(updates).where(eq(categoriesTable.id, id)).returning();
-  if (!updated || updated.userId !== userId) return res.status(404).json({ error: "not_found" });
+  const [updated] = await db.update(categoriesTable).set(updates).where(and(eq(categoriesTable.id, id), eq(categoriesTable.userId, userId))).returning();
+  if (!updated) return res.status(404).json({ error: "not_found" });
   return res.json(updated);
 });
 
@@ -127,8 +127,8 @@ router.patch("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
   const userId = parseInt(req.params.userId);
-  const [deleted] = await db.delete(categoriesTable).where(eq(categoriesTable.id, id)).returning();
-  if (!deleted || deleted.userId !== userId) return res.status(404).json({ error: "not_found" });
+  const [deleted] = await db.delete(categoriesTable).where(and(eq(categoriesTable.id, id), eq(categoriesTable.userId, userId))).returning();
+  if (!deleted) return res.status(404).json({ error: "not_found" });
   return res.json({ success: true });
 });
 
@@ -136,6 +136,8 @@ router.delete("/:id", async (req, res) => {
 // Classifies a transaction description using fast keyword matching with AI fallback.
 router.post("/categorize", async (req, res) => {
   const userId = parseInt(req.params.userId);
+  if (isNaN(userId)) return res.status(400).json({ error: "bad_request", message: "Invalid user ID." });
+
   const { description } = req.body as { description?: string };
   if (!description) return res.status(400).json({ error: "bad_request", message: "Description is required." });
 

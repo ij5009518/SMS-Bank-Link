@@ -25,6 +25,46 @@ router.post("/login", async (req, res) => {
 
   res.json(createAdminSessionTokens());
   return;
+import { eq, count, sql } from "drizzle-orm";
+import { createHash } from "crypto";
+import { createRouteLimiter, enforceRetryLockout, recordRetryFailure, clearRetryFailures, retryPolicies } from "../middleware/security.js";
+
+const router: IRouter = Router();
+
+const adminLoginLimiter = createRouteLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  message: "Too many admin login attempts. Please wait and try again.",
+});
+
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "textbanks-admin-2025";
+// Simple signed token: sha256(password + secret)
+const ADMIN_SECRET = process.env.ADMIN_SECRET || "tb_admin_secret_key";
+function makeToken(password: string) {
+  return createHash("sha256").update(password + ADMIN_SECRET).digest("hex");
+}
+const VALID_TOKEN = makeToken(ADMIN_PASSWORD);
+
+router.post("/login", adminLoginLimiter, (req, res) => {
+  const { password } = req.body as { password?: string };
+  const subject = "admin";
+
+  if (enforceRetryLockout(req, res, retryPolicies.adminLogin, subject)) {
+    return;
+  }
+
+  if (!password) {
+    recordRetryFailure(req, retryPolicies.adminLogin, subject);
+    return res.status(400).json({ error: "bad_request", message: "Password is required." });
+  }
+
+  if (password !== ADMIN_PASSWORD) {
+    recordRetryFailure(req, retryPolicies.adminLogin, subject);
+    return res.status(401).json({ error: "unauthorized", message: "Invalid credentials." });
+  }
+
+  clearRetryFailures(req, retryPolicies.adminLogin, subject);
+  res.json({ token: VALID_TOKEN });
 });
 
 router.post("/refresh", (req, res) => {
