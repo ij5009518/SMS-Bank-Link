@@ -13,6 +13,8 @@ import { eq, desc, and } from "drizzle-orm";
 import { listAccounts, getBalance, listTransactions } from "../lib/teller.js";
 import { sendSms, normalizeE164, isConfigured } from "../lib/signalwire.js";
 import { routeSimulateCommand } from "./simulate-command-routing.js";
+import { normalizePhoneDigits } from "../lib/phone-normalization.js";
+import { dispatchSimulateCommand } from "./smsDispatch.js";
 
 const router: IRouter = Router();
 
@@ -57,32 +59,26 @@ router.post("/webhook", async (req, res) => {
 
     const cmd = body.trim().toUpperCase();
     const normalizedPhone = normalizeE164(from);
-    const digitsOnly = from.replace(/\D/g, "").replace(/^1/, "");
+    const digitsOnly = normalizePhoneDigits(from);
 
     // Find user by phone — check primary number first, then secondary linked numbers
-    const allUsers = await db.select().from(usersTable);
-    let user = allUsers.find((u) => {
-      const uDigits = u.phoneNumber.replace(/\D/g, "").replace(/^1/, "");
-      return uDigits === digitsOnly;
-    });
+    let user: typeof usersTable.$inferSelect | undefined;
+    if (digitsOnly) {
+      [user] = await db.select().from(usersTable).where(eq(usersTable.phoneNumberDigits, digitsOnly));
+    }
 
     if (!user) {
       // Check secondary (linked) phone numbers
-      const secondary = await db.select().from(phoneNumbersTable)
-        .where(and(
-          eq(phoneNumbersTable.phoneNumber, normalizedPhone.replace(/\D/g, "")),
-          eq(phoneNumbersTable.verified, true)
-        ));
-      if (secondary.length > 0) {
-        user = allUsers.find((u) => u.id === secondary[0].userId);
+      let secondary: typeof phoneNumbersTable.$inferSelect | undefined;
+      if (digitsOnly) {
+        [secondary] = await db.select().from(phoneNumbersTable)
+          .where(and(eq(phoneNumbersTable.phoneNumberDigits, digitsOnly), eq(phoneNumbersTable.verified, true)));
+      } else if (normalizedPhone) {
+        [secondary] = await db.select().from(phoneNumbersTable)
+          .where(and(eq(phoneNumbersTable.phoneNumberE164, normalizedPhone), eq(phoneNumbersTable.verified, true)));
       }
-      if (!user) {
-        // Try digits-only match on secondary numbers
-        const allSecondary = await db.select().from(phoneNumbersTable).where(eq(phoneNumbersTable.verified, true));
-        const match = allSecondary.find((p) => p.phoneNumber.replace(/\D/g, "").replace(/^1/, "") === digitsOnly);
-        if (match) {
-          user = allUsers.find((u) => u.id === match.userId);
-        }
+      if (secondary) {
+        [user] = await db.select().from(usersTable).where(eq(usersTable.id, secondary.userId));
       }
     }
 
@@ -258,6 +254,18 @@ router.post("/simulate", async (req, res) => {
       onLimit: () => handleCreditLimit(userId, enrollment?.accessToken),
       onSpend: () => handleSpend(userId, enrollment?.accessToken),
       onUnknown: () => "Unknown command. Reply HELP for available commands.",
+    const responseText = await dispatchSimulateCommand(cmd, {
+      help: () => "TextBank Commands:\nBAL - All balances\nBAL [nick] - One account\nTRANS - Last 5 transactions\nTRANS [n] - Last N transactions\nLAST - Most recent transaction\nLIMIT - Credit card limits\nSPEND - Monthly spend total\nSTOP - Opt out\nSTART - Re-subscribe",
+      stop: async () => {
+        await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, userId));
+        return "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
+      },
+      balance: (currentCmd) => handleBalance(currentCmd, userId, enrollment?.accessToken),
+      transactions: (currentCmd) => handleTransactions(currentCmd, userId, enrollment?.accessToken),
+      last: () => handleLastTransaction(userId, enrollment?.accessToken),
+      limit: () => handleCreditLimit(userId, enrollment?.accessToken),
+      spend: () => handleSpend(userId, enrollment?.accessToken),
+      unknown: () => "Unknown command. Reply HELP for available commands.",
     });
 
     // Send real SMS if configured
