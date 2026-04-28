@@ -9,6 +9,8 @@ import MyAccountPage from "./pages/my-account";
 import AdminDashboard from "./pages/admin/dashboard";
 import PrivacyPolicy from "./pages/privacy";
 import TermsOfService from "./pages/terms";
+import FaqPage from "./pages/faq";
+import ContactPage from "./pages/contact";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient({
@@ -29,6 +31,8 @@ function Router() {
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/privacy" component={PrivacyPolicy} />
       <Route path="/terms" component={TermsOfService} />
+      <Route path="/faq" component={FaqPage} />
+      <Route path="/contact" component={ContactPage} />
       <Route component={NotFound} />
     </Switch>
   );
