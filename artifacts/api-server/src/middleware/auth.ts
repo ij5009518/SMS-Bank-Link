@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+import { verifyAdminAccessToken } from "../lib/admin-auth.js";
 
 type SessionRole = "user" | "admin";
 
@@ -12,6 +13,18 @@ type SessionTokenPayload = {
   iat: number;
   exp: number;
 };
+
+declare global {
+  namespace Express {
+    interface Request {
+      auth?: {
+        sub: string;
+        role: string;
+        exp: number;
+      };
+    }
+  }
+}
 
 const SESSION_SECRET = process.env.SESSION_TOKEN_SECRET || "textbanks_session_secret_change_me";
 const SESSION_TTL_SECONDS = Number(process.env.SESSION_TOKEN_TTL_SECONDS || 60 * 60 * 24 * 7);
@@ -34,18 +47,6 @@ function unauthorized(res: Response) {
 
 function forbidden(res: Response) {
   return res.status(403).json({ error: "forbidden", message: "Forbidden" });
-import { verifyAdminAccessToken } from "../lib/admin-auth.js";
-
-declare global {
-  namespace Express {
-    interface Request {
-      auth?: {
-        sub: string;
-        role: string;
-        exp: number;
-      };
-    }
-  }
 }
 
 function readBearerToken(req: Request): string | null {
@@ -150,13 +151,6 @@ export function requireSelfOrAdmin(paramName = "userId") {
   };
 }
 
-export const authErrors = { unauthorized, forbidden };
-  if (!authHeader) return null;
-  const [scheme, token] = authHeader.split(" ");
-  if (!scheme || !token || scheme.toLowerCase() !== "bearer") return null;
-  return token;
-}
-
 export function authenticateToken(req: Request, res: Response, next: NextFunction) {
   const token = readBearerToken(req);
   if (!token) {
@@ -182,3 +176,5 @@ export function requireRole(role: "admin") {
     return;
   };
 }
+
+export const authErrors = { unauthorized, forbidden };

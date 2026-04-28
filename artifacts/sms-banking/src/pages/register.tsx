@@ -39,21 +39,6 @@ import { PublicLayout } from "@/components/layout/PublicLayout";
 import { TextBanksLogo } from "@/components/layout/Logo";
 import { useRegisterUser, useGetTellerConfig, useTellerEnroll } from "@workspace/api-client-react";
 
-declare global {
-  interface Window {
-    TellerConnect?: {
-      setup: (opts: {
-        applicationId: string;
-        environment?: string;
-        products?: string[];
-        onSuccess: (enrollment: { accessToken: string; enrollment: { id: string; institution: { name: string } } }) => void;
-        onExit?: () => void;
-        onFailure?: (e: unknown) => void;
-      }) => { open: () => void };
-    };
-  }
-}
-
 const schema = z.object({
   firstName: z.string().min(2, "First name is required"),
   lastName: z.string().min(2, "Last name is required"),
