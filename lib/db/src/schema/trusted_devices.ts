@@ -5,6 +5,8 @@ export const trustedDevicesTable = pgTable("trusted_devices", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   token: text("token").notNull().unique(),
+  tokenHash: text("token_hash").unique(),
+  tokenSalt: text("token_salt"),
   deviceName: text("device_name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),

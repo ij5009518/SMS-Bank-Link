@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { usersTable, accountsTable, trustedDevicesTable } from "@workspace/db/schema";
 import { eq, and, gt, ne, or } from "drizzle-orm";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
+import { hashVerificationToken, verifyVerificationToken } from "../lib/security.js";
 import { promisify } from "util";
 import { sendSms, normalizeE164 } from "../lib/signalwire.js";
 import { sendWelcomeEmail, sendEmailVerificationEmail, sendDeviceVerificationEmail, sendPasswordResetEmail } from "../lib/email.js";
@@ -49,10 +50,28 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
 }
 
 function safeUser(user: typeof usersTable.$inferSelect, accounts: Array<Record<string, unknown>>) {
-  const { passwordHash: _pw, phoneVerificationCode: _vc, ...rest } = user as typeof user & {
-    passwordHash?: string;
-    phoneVerificationCode?: string;
-  };
+  const {
+    passwordHash: _pw,
+    phoneVerificationCode: _vc,
+    phoneVerificationCodeHash: _vch,
+    phoneVerificationCodeSalt: _vcs,
+    pendingPhoneCode: _ppc,
+    pendingPhoneCodeHash: _ppch,
+    pendingPhoneCodeSalt: _ppcs,
+    emailVerificationToken: _evt,
+    emailVerificationTokenHash: _evth,
+    emailVerificationTokenSalt: _evts,
+    deviceVerificationCode: _dvc,
+    deviceVerificationCodeHash: _dvch,
+    deviceVerificationCodeSalt: _dvcs,
+    passwordResetToken: _prt,
+    passwordResetTokenHash: _prth,
+    passwordResetTokenSalt: _prts,
+    passwordResetOtp: _pro,
+    passwordResetOtpHash: _proh,
+    passwordResetOtpSalt: _pros,
+    ...rest
+  } = user as typeof user & Record<string, unknown>;
   return { ...rest, accounts };
 }
 
@@ -108,13 +127,12 @@ router.post("/login", loginLimiter, async (req, res) => {
 
   // Check if device is trusted
   if (deviceToken) {
-    const [trusted] = await db.select().from(trustedDevicesTable).where(
+    const trusted = (await db.select().from(trustedDevicesTable).where(
       and(
         eq(trustedDevicesTable.userId, user.id),
-        eq(trustedDevicesTable.token, deviceToken),
         gt(trustedDevicesTable.expiresAt, new Date())
       )
-    );
+    )).find((t) => verifyVerificationToken(deviceToken, t.tokenHash, t.tokenSalt) || t.token === deviceToken);
     if (trusted) {
       // Known device — log in immediately
       const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, user.id));
@@ -157,8 +175,10 @@ router.post("/signup", async (req, res) => {
   const normalizedEmail = email?.trim().toLowerCase() || null;
   const passwordHash = await hashPassword(password);
   const verificationCode = generateVerificationCode();
+  const verificationCodeSec = hashVerificationToken(verificationCode);
   const verificationExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
   const emailVerificationToken = normalizedEmail ? randomBytes(32).toString("hex") : null;
+  const emailVerificationTokenSec = emailVerificationToken ? hashVerificationToken(emailVerificationToken) : null;
   const emailVerificationTokenExpiry = emailVerificationToken ? new Date(Date.now() + 72 * 60 * 60 * 1000) : null; // 72 hours
 
   try {
@@ -176,10 +196,14 @@ router.post("/signup", async (req, res) => {
       optedOut: false,
       onboardingStatus: "pending",
       phoneVerified: false,
-      phoneVerificationCode: verificationCode,
+      phoneVerificationCode: null,
+      phoneVerificationCodeHash: verificationCodeSec.tokenHash,
+      phoneVerificationCodeSalt: verificationCodeSec.tokenSalt,
       phoneVerificationExpiry: verificationExpiry,
       emailVerified: false,
-      emailVerificationToken,
+      emailVerificationToken: null,
+      emailVerificationTokenHash: emailVerificationTokenSec?.tokenHash ?? null,
+      emailVerificationTokenSalt: emailVerificationTokenSec?.tokenSalt ?? null,
       emailVerificationTokenExpiry,
     }).returning();
 
@@ -235,7 +259,7 @@ router.post("/verify-phone", otpLimiter, async (req, res) => {
     return res.json({ success: true, message: "Phone already verified." });
   }
 
-  if (!user.phoneVerificationCode || !user.phoneVerificationExpiry) {
+  if ((!user.phoneVerificationCodeHash && !user.phoneVerificationCode) || !user.phoneVerificationExpiry) {
     return res.status(400).json({ error: "no_code", message: "No verification code found. Please request a new one." });
   }
 
@@ -244,6 +268,8 @@ router.post("/verify-phone", otpLimiter, async (req, res) => {
     return res.status(400).json({ error: "code_expired", message: "Invalid or expired verification code." });
   }
 
+  if (!verifyVerificationToken(code.trim(), user.phoneVerificationCodeHash, user.phoneVerificationCodeSalt) && user.phoneVerificationCode !== code.trim()) {
+    return res.status(400).json({ error: "invalid_code", message: "That code is incorrect. Please check your SMS and try again." });
   if (user.phoneVerificationCode !== code.trim()) {
     recordRetryFailure(req, retryPolicies.otp, String(userId));
     return res.status(400).json({ error: "invalid_code", message: "Invalid or expired verification code." });
@@ -252,7 +278,7 @@ router.post("/verify-phone", otpLimiter, async (req, res) => {
   clearRetryFailures(req, retryPolicies.otp, subject);
 
   const [updated] = await db.update(usersTable)
-    .set({ phoneVerified: true, phoneVerificationCode: null, phoneVerificationExpiry: null, onboardingStatus: "active" })
+    .set({ phoneVerified: true, phoneVerificationCode: null, phoneVerificationCodeHash: null, phoneVerificationCodeSalt: null, phoneVerificationExpiry: null, onboardingStatus: "active" })
     .where(eq(usersTable.id, userId))
     .returning();
 
@@ -277,10 +303,11 @@ router.post("/resend-verification", otpLimiter, async (req, res) => {
   }
 
   const verificationCode = generateVerificationCode();
+  const verificationCodeSec = hashVerificationToken(verificationCode);
   const verificationExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
   await db.update(usersTable)
-    .set({ phoneVerificationCode: verificationCode, phoneVerificationExpiry: verificationExpiry })
+    .set({ phoneVerificationCode: null, phoneVerificationCodeHash: verificationCodeSec.tokenHash, phoneVerificationCodeSalt: verificationCodeSec.tokenSalt, phoneVerificationExpiry: verificationExpiry })
     .where(eq(usersTable.id, userId));
 
   const e164 = normalizeE164(user.phoneNumber);
@@ -301,7 +328,8 @@ router.post("/verify-email", async (req, res) => {
   const { token } = req.body as { token?: string };
   if (!token) return res.status(400).json({ error: "bad_request", message: "Token is required." });
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.emailVerificationToken, token));
+  const allUsers = await db.select().from(usersTable);
+  const user = allUsers.find((u) => verifyVerificationToken(token, u.emailVerificationTokenHash, u.emailVerificationTokenSalt) || u.emailVerificationToken === token);
   if (!user) return res.status(404).json({ error: "invalid_token", message: "This verification link is invalid or has already been used." });
 
   if (user.emailVerificationTokenExpiry && new Date() > new Date(user.emailVerificationTokenExpiry)) {
@@ -309,7 +337,7 @@ router.post("/verify-email", async (req, res) => {
   }
 
   const [updated] = await db.update(usersTable)
-    .set({ emailVerified: true, emailVerificationToken: null, emailVerificationTokenExpiry: null })
+    .set({ emailVerified: true, emailVerificationToken: null, emailVerificationTokenHash: null, emailVerificationTokenSalt: null, emailVerificationTokenExpiry: null })
     .where(eq(usersTable.id, user.id))
     .returning();
 
@@ -327,10 +355,11 @@ router.post("/resend-email-verification", async (req, res) => {
   if (user.emailVerified) return res.json({ success: true, message: "Email is already verified." });
 
   const newToken = randomBytes(32).toString("hex");
+  const newTokenSec = hashVerificationToken(newToken);
   const expiry = new Date(Date.now() + 72 * 60 * 60 * 1000);
 
   await db.update(usersTable)
-    .set({ emailVerificationToken: newToken, emailVerificationTokenExpiry: expiry })
+    .set({ emailVerificationToken: null, emailVerificationTokenHash: newTokenSec.tokenHash, emailVerificationTokenSalt: newTokenSec.tokenSalt, emailVerificationTokenExpiry: expiry })
     .where(eq(usersTable.id, userId));
 
   try {
@@ -353,10 +382,11 @@ router.post("/send-device-code", otpLimiter, async (req, res) => {
   if (!user) return res.status(404).json({ error: "not_found", message: "User not found." });
 
   const code = generateVerificationCode();
+  const codeSec = hashVerificationToken(code);
   const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
   await db.update(usersTable)
-    .set({ deviceVerificationCode: code, deviceVerificationExpiry: expiry })
+    .set({ deviceVerificationCode: null, deviceVerificationCodeHash: codeSec.tokenHash, deviceVerificationCodeSalt: codeSec.tokenSalt, deviceVerificationExpiry: expiry })
     .where(eq(usersTable.id, userId));
 
   // Send via email if available, otherwise via SMS
@@ -400,13 +430,15 @@ router.post("/verify-device", otpLimiter, async (req, res) => {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
   if (!user) return res.status(404).json({ error: "not_found", message: "User not found." });
 
-  if (!user.deviceVerificationCode || !user.deviceVerificationExpiry) {
+  if ((!user.deviceVerificationCodeHash && !user.deviceVerificationCode) || !user.deviceVerificationExpiry) {
     return res.status(400).json({ error: "no_code", message: "No verification code found. Please request a new one." });
   }
   if (new Date() > new Date(user.deviceVerificationExpiry)) {
     recordRetryFailure(req, retryPolicies.otp, subject);
     return res.status(400).json({ error: "code_expired", message: "Invalid or expired verification code." });
   }
+  if (!verifyVerificationToken(code.trim(), user.deviceVerificationCodeHash, user.deviceVerificationCodeSalt) && user.deviceVerificationCode !== code.trim()) {
+    return res.status(400).json({ error: "invalid_code", message: "Incorrect code. Check your email or phone and try again." });
   if (user.deviceVerificationCode !== code.trim()) {
     recordRetryFailure(req, retryPolicies.otp, subject);
     return res.status(400).json({ error: "invalid_code", message: "Invalid or expired verification code." });
@@ -416,15 +448,18 @@ router.post("/verify-device", otpLimiter, async (req, res) => {
 
   // Clear the code and create a trusted device record
   await db.update(usersTable)
-    .set({ deviceVerificationCode: null, deviceVerificationExpiry: null })
+    .set({ deviceVerificationCode: null, deviceVerificationCodeHash: null, deviceVerificationCodeSalt: null, deviceVerificationExpiry: null })
     .where(eq(usersTable.id, userId));
 
   const deviceToken = randomBytes(32).toString("hex");
+  const deviceTokenSec = hashVerificationToken(deviceToken);
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
 
   await db.insert(trustedDevicesTable).values({
     userId,
     token: deviceToken,
+    tokenHash: deviceTokenSec.tokenHash,
+    tokenSalt: deviceTokenSec.tokenSalt,
     deviceName: deviceName || "Browser",
     expiresAt,
   });
@@ -450,10 +485,11 @@ router.post("/reverify-phone", otpLimiter, async (req, res) => {
   }
 
   const verificationCode = generateVerificationCode();
+  const verificationCodeSec = hashVerificationToken(verificationCode);
   const verificationExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
   await db.update(usersTable)
-    .set({ phoneVerified: false, phoneVerificationCode: verificationCode, phoneVerificationExpiry: verificationExpiry })
+    .set({ phoneVerified: false, phoneVerificationCode: null, phoneVerificationCodeHash: verificationCodeSec.tokenHash, phoneVerificationCodeSalt: verificationCodeSec.tokenSalt, phoneVerificationExpiry: verificationExpiry })
     .where(eq(usersTable.id, userId));
 
   const e164 = normalizeE164(user.phoneNumber);
@@ -499,10 +535,11 @@ router.post("/request-phone-change", otpLimiter, async (req, res) => {
   }
 
   const code = generateVerificationCode();
+  const codeSec = hashVerificationToken(code);
   const expiry = new Date(Date.now() + 10 * 60 * 1000);
 
   await db.update(usersTable)
-    .set({ pendingPhoneNumber: normalizedNew, pendingPhoneCode: code, pendingPhoneExpiry: expiry })
+    .set({ pendingPhoneNumber: normalizedNew, pendingPhoneCode: null, pendingPhoneCodeHash: codeSec.tokenHash, pendingPhoneCodeSalt: codeSec.tokenSalt, pendingPhoneExpiry: expiry })
     .where(eq(usersTable.id, userId));
 
   const e164 = normalizeE164(normalizedNew);
@@ -537,7 +574,7 @@ router.post("/confirm-phone-change", otpLimiter, async (req, res) => {
     return res.status(404).json({ error: "not_found", message: "User not found." });
   }
 
-  if (!user.pendingPhoneNumber || !user.pendingPhoneCode || !user.pendingPhoneExpiry) {
+  if (!user.pendingPhoneNumber || (!user.pendingPhoneCodeHash && !user.pendingPhoneCode) || !user.pendingPhoneExpiry) {
     return res.status(400).json({ error: "no_pending", message: "No phone change in progress. Please request a new code." });
   }
 
@@ -546,6 +583,8 @@ router.post("/confirm-phone-change", otpLimiter, async (req, res) => {
     return res.status(400).json({ error: "code_expired", message: "Invalid or expired verification code." });
   }
 
+  if (!verifyVerificationToken(code.trim(), user.pendingPhoneCodeHash, user.pendingPhoneCodeSalt) && user.pendingPhoneCode !== code.trim()) {
+    return res.status(400).json({ error: "invalid_code", message: "That code is incorrect. Check your new number's SMS." });
   if (user.pendingPhoneCode !== code.trim()) {
     recordRetryFailure(req, retryPolicies.otp, subject);
     return res.status(400).json({ error: "invalid_code", message: "Invalid or expired verification code." });
@@ -561,6 +600,8 @@ router.post("/confirm-phone-change", otpLimiter, async (req, res) => {
       phoneVerified: true,
       pendingPhoneNumber: null,
       pendingPhoneCode: null,
+      pendingPhoneCodeHash: null,
+      pendingPhoneCodeSalt: null,
       pendingPhoneExpiry: null,
     })
     .where(eq(usersTable.id, userId))
@@ -604,8 +645,9 @@ router.post("/forgot-password", passwordResetLimiter, async (req, res) => {
 
   if (isEmail && user.email) {
     const token = randomBytes(40).toString("hex");
+    const tokenSec = hashVerificationToken(token);
     const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-    await db.update(usersTable).set({ passwordResetToken: token, passwordResetTokenExpiry: expiry }).where(eq(usersTable.id, user.id));
+    await db.update(usersTable).set({ passwordResetToken: null, passwordResetTokenHash: tokenSec.tokenHash, passwordResetTokenSalt: tokenSec.tokenSalt, passwordResetTokenExpiry: expiry }).where(eq(usersTable.id, user.id));
     const resetUrl = `${WEBSITE_URL}/my-account?reset_token=${token}`;
     sendPasswordResetEmail(user.email, user.firstName, resetUrl)
       .catch((e) => console.error("[Auth] Password reset email failed:", e instanceof Error ? e.message : e));
@@ -614,8 +656,9 @@ router.post("/forgot-password", passwordResetLimiter, async (req, res) => {
   } else {
     // SMS OTP
     const otp = generateVerificationCode();
+    const otpSec = hashVerificationToken(otp);
     const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-    await db.update(usersTable).set({ passwordResetOtp: otp, passwordResetOtpExpiry: expiry }).where(eq(usersTable.id, user.id));
+    await db.update(usersTable).set({ passwordResetOtp: null, passwordResetOtpHash: otpSec.tokenHash, passwordResetOtpSalt: otpSec.tokenSalt, passwordResetOtpExpiry: expiry }).where(eq(usersTable.id, user.id));
     const e164 = normalizeE164(user.phoneNumber);
     if (e164) {
       sendSms(e164, `Your Text Banks password reset code is: ${otp}\n\nExpires in 15 minutes. Do not share it.`)
@@ -637,6 +680,9 @@ router.post("/reset-password-token", passwordResetLimiter, async (req, res) => {
   if (!token || !newPassword) return res.status(400).json({ error: "bad_request", message: "Token and new password are required." });
   if (newPassword.length < 6) return res.status(400).json({ error: "bad_request", message: "Password must be at least 6 characters." });
 
+  const allUsers = await db.select().from(usersTable);
+  const user = allUsers.find((u) => verifyVerificationToken(token, u.passwordResetTokenHash, u.passwordResetTokenSalt) || u.passwordResetToken === token);
+  if (!user) return res.status(404).json({ error: "invalid_token", message: "This reset link is invalid or has already been used." });
   const [user] = await db.select().from(usersTable).where(eq(usersTable.passwordResetToken, token));
   if (!user) {
     recordRetryFailure(req, retryPolicies.passwordReset, subject);
@@ -649,7 +695,7 @@ router.post("/reset-password-token", passwordResetLimiter, async (req, res) => {
 
   clearRetryFailures(req, retryPolicies.passwordReset, subject);
   const passwordHash = await hashPassword(newPassword);
-  await db.update(usersTable).set({ passwordHash, passwordResetToken: null, passwordResetTokenExpiry: null }).where(eq(usersTable.id, user.id));
+  await db.update(usersTable).set({ passwordHash, passwordResetToken: null, passwordResetTokenHash: null, passwordResetTokenSalt: null, passwordResetTokenExpiry: null }).where(eq(usersTable.id, user.id));
   return res.json({ success: true, message: "Your password has been updated. You can now sign in." });
 });
 
@@ -665,6 +711,9 @@ router.post("/reset-password-otp", passwordResetLimiter, async (req, res) => {
   if (newPassword.length < 6) return res.status(400).json({ error: "bad_request", message: "Password must be at least 6 characters." });
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) return res.status(404).json({ error: "not_found", message: "User not found." });
+  if ((!user.passwordResetOtpHash && !user.passwordResetOtp) || (!verifyVerificationToken(otp, user.passwordResetOtpHash, user.passwordResetOtpSalt) && user.passwordResetOtp !== otp)) {
+    return res.status(401).json({ error: "invalid_otp", message: "Incorrect code. Please try again." });
   if (!user) {
     recordRetryFailure(req, retryPolicies.passwordReset, subject);
     return res.status(404).json({ error: "not_found", message: "Unable to reset password with that code." });
@@ -680,7 +729,7 @@ router.post("/reset-password-otp", passwordResetLimiter, async (req, res) => {
 
   clearRetryFailures(req, retryPolicies.passwordReset, subject);
   const passwordHash = await hashPassword(newPassword);
-  await db.update(usersTable).set({ passwordHash, passwordResetOtp: null, passwordResetOtpExpiry: null }).where(eq(usersTable.id, user.id));
+  await db.update(usersTable).set({ passwordHash, passwordResetOtp: null, passwordResetOtpHash: null, passwordResetOtpSalt: null, passwordResetOtpExpiry: null }).where(eq(usersTable.id, user.id));
   return res.json({ success: true, message: "Your password has been updated. You can now sign in." });
 });
 
@@ -771,6 +820,7 @@ router.post("/google/complete", async (req, res) => {
 
   // Generate email verification token
   const emailVerificationToken = randomBytes(36).toString("hex");
+  const emailVerificationTokenSec = hashVerificationToken(emailVerificationToken);
   const emailVerificationTokenExpiry = new Date(Date.now() + 72 * 60 * 60 * 1000);
 
   try {
@@ -788,7 +838,9 @@ router.post("/google/complete", async (req, res) => {
       onboardingStatus: "pending",
       phoneVerified: false,
       emailVerified: false,
-      emailVerificationToken,
+      emailVerificationToken: null,
+      emailVerificationTokenHash: emailVerificationTokenSec.tokenHash,
+      emailVerificationTokenSalt: emailVerificationTokenSec.tokenSalt,
       emailVerificationTokenExpiry,
     }).returning();
 
