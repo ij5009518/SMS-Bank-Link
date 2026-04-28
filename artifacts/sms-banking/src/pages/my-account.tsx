@@ -52,18 +52,21 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { TextBanksLogo } from "@/components/layout/Logo";
-import {
-  useGetUserTransactions,
-  useGetSmsLogs,
-  useGetUser,
-  useTellerEnroll,
-  useGetTellerConfig,
-  getGetUserQueryKey,
-  getGetUserTransactionsQueryKey,
-  getGetSmsLogsQueryKey,
-  getGetTellerConfigQueryKey,
-} from "@workspace/api-client-react";
+import { useGetUserTransactions, useGetSmsLogs, useGetUser, useTellerEnroll, useGetTellerConfig, getGetUserQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+
+declare global {
+  interface Window {
+    TellerConnect?: {
+      setup: (opts: {
+        applicationId: string;
+        environment: string;
+        onSuccess: (enrollment: { accessToken: string; enrollment: { id: string; institution: { name: string } } }) => void;
+        onExit?: () => void;
+      }) => { open: () => void };
+    };
+  }
+}
 
 const SESSION_KEY = "textbank_session";
 
@@ -263,13 +266,7 @@ export default function MyAccountPage() {
     }
   }, []);
 
-  const { data: freshUser } = useGetUser(session?.id ?? 0, {
-    query: {
-      queryKey: getGetUserQueryKey(session?.id ?? 0),
-      enabled: !!session,
-      refetchInterval: 60000,
-    },
-  });
+  const { data: freshUser } = useGetUser(session?.id ?? 0, { query: { enabled: !!session, refetchInterval: 60000 } });
 
   // Sync plan from DB whenever freshUser loads
   useEffect(() => {
@@ -294,27 +291,8 @@ export default function MyAccountPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id]);
 
-  const { data: transactions, refetch: refetchTransactions } = useGetUserTransactions(
-    session?.id ?? 0,
-    {},
-    {
-      query: {
-        queryKey: getGetUserTransactionsQueryKey(session?.id ?? 0, {}),
-        enabled: !!session,
-        refetchInterval: 60000,
-      },
-    },
-  );
-  const { data: smsLogs } = useGetSmsLogs(
-    { userId: session?.id, limit: 20 },
-    {
-      query: {
-        queryKey: getGetSmsLogsQueryKey({ userId: session?.id, limit: 20 }),
-        enabled: !!session,
-        refetchInterval: 15000,
-      },
-    },
-  );
+  const { data: transactions, refetch: refetchTransactions } = useGetUserTransactions(session?.id ?? 0, {}, { query: { enabled: !!session, refetchInterval: 60000 } });
+  const { data: smsLogs } = useGetSmsLogs({ userId: session?.id, limit: 20 }, { query: { enabled: !!session, refetchInterval: 15000 } });
 
   const fetchCategories = async () => {
     if (!session) return;
@@ -804,9 +782,7 @@ export default function MyAccountPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const tellerConnectRef = useRef<{ open: () => void } | null>(null);
   const tellerEnrollMutation = useTellerEnroll();
-  const { data: tellerConfig } = useGetTellerConfig({
-    query: { queryKey: getGetTellerConfigQueryKey(), enabled: !!session },
-  });
+  const { data: tellerConfig } = useGetTellerConfig({ query: { enabled: !!session } });
 
   // Load Teller Connect script
   useEffect(() => {
@@ -829,7 +805,7 @@ export default function MyAccountPage() {
         setBankLinkError(null);
         try {
           const result = await tellerEnrollMutation.mutateAsync({
-            data: {
+            body: {
               userId: session.id,
               accessToken: enrollment.accessToken,
               enrollmentId: enrollment.enrollment.id,
@@ -1370,7 +1346,7 @@ export default function MyAccountPage() {
                     >
                       <Icon className="w-3.5 h-3.5" />
                       <span>{label}</span>
-                      {pro && <Crown className="w-3 h-3 text-amber-500" />}
+                      {pro && <Crown className="w-3 h-3 text-amber-500" title="Pro feature" />}
                     </button>
                   ))}
                 </div>
