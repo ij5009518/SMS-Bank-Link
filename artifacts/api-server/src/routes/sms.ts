@@ -12,6 +12,7 @@ import { SimulateSmsBody } from "@workspace/api-zod";
 import { eq, desc, and } from "drizzle-orm";
 import { listAccounts, getBalance, listTransactions } from "../lib/teller.js";
 import { sendSms, normalizeE164, isConfigured } from "../lib/signalwire.js";
+import { routeSimulateCommand } from "./simulate-command-routing.js";
 import { normalizePhoneDigits } from "../lib/phone-normalization.js";
 import { dispatchSimulateCommand } from "./smsDispatch.js";
 
@@ -241,6 +242,18 @@ router.post("/simulate", async (req, res) => {
       .where(eq(tellerEnrollmentsTable.userId, userId))
       .limit(1);
 
+    const responseText = await routeSimulateCommand(cmd, {
+      onHelp: () => "TextBank Commands:\nBAL - All balances\nBAL [nick] - One account\nTRANS - Last 5 transactions\nTRANS [n] - Last N transactions\nLAST - Most recent transaction\nLIMIT - Credit card limits\nSPEND - Monthly spend total\nSTOP - Opt out\nSTART - Re-subscribe",
+      onStop: async () => {
+        await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, userId));
+        return "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
+      },
+      onBalance: () => handleBalance(cmd, userId, enrollment?.accessToken),
+      onTransactions: () => handleTransactions(cmd, userId, enrollment?.accessToken),
+      onLast: () => handleLastTransaction(userId, enrollment?.accessToken),
+      onLimit: () => handleCreditLimit(userId, enrollment?.accessToken),
+      onSpend: () => handleSpend(userId, enrollment?.accessToken),
+      onUnknown: () => "Unknown command. Reply HELP for available commands.",
     const responseText = await dispatchSimulateCommand(cmd, {
       help: () => "TextBank Commands:\nBAL - All balances\nBAL [nick] - One account\nTRANS - Last 5 transactions\nTRANS [n] - Last N transactions\nLAST - Most recent transaction\nLIMIT - Credit card limits\nSPEND - Monthly spend total\nSTOP - Opt out\nSTART - Re-subscribe",
       stop: async () => {
