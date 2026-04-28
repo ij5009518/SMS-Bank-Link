@@ -8,6 +8,7 @@ import { promisify } from "util";
 import { sendSms, normalizeE164 } from "../lib/signalwire.js";
 import { sendWelcomeEmail, sendEmailVerificationEmail, sendDeviceVerificationEmail, sendPasswordResetEmail } from "../lib/email.js";
 import { OAuth2Client } from "google-auth-library";
+import { signSessionToken } from "../middleware/auth.js";
 import { createRouteLimiter, enforceRetryLockout, recordRetryFailure, clearRetryFailures, retryPolicies } from "../middleware/security.js";
 import { normalizePhoneDigits, normalizePhoneForStorage } from "../lib/phone-normalization.js";
 
@@ -136,7 +137,8 @@ router.post("/login", loginLimiter, async (req, res) => {
     if (trusted) {
       // Known device — log in immediately
       const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, user.id));
-      return res.json({ ...safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))), deviceVerified: true });
+      const sessionToken = signSessionToken({ userId: user.id, role: "user" });
+      return res.json({ ...safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))), deviceVerified: true, sessionToken });
     }
   }
 
@@ -468,7 +470,8 @@ router.post("/verify-device", otpLimiter, async (req, res) => {
   const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, userId));
   const safeU = safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) })));
 
-  res.json({ success: true, deviceToken, user: safeU });
+  const sessionToken = signSessionToken({ userId, role: "user" });
+  res.json({ success: true, deviceToken, sessionToken, user: safeU });
 });
 
 // Re-verify current phone (works even if already verified — resets to unverified)
@@ -776,7 +779,8 @@ router.post("/google", async (req, res) => {
       await db.update(usersTable).set({ googleId }).where(eq(usersTable.id, user.id));
     }
     const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, user.id));
-    return res.json({ success: true, user: safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+    const sessionToken = signSessionToken({ userId: user.id, role: "user" });
+    return res.json({ success: true, sessionToken, user: safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
   }
 
   // New Google user — needs phone number to complete registration
@@ -815,7 +819,8 @@ router.post("/google/complete", async (req, res) => {
   const [googleConflict] = await db.select().from(usersTable).where(eq(usersTable.googleId, googleId));
   if (googleConflict) {
     const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, googleConflict.id));
-    return res.json({ success: true, user: safeUser(googleConflict, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+    const sessionToken = signSessionToken({ userId: googleConflict.id, role: "user" });
+    return res.json({ success: true, sessionToken, user: safeUser(googleConflict, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
   }
 
   // Generate email verification token
@@ -850,7 +855,8 @@ router.post("/google/complete", async (req, res) => {
     sendWelcomeEmail(email, user.firstName, normalized, emailVerificationToken)
       .catch((e) => console.error("[Google Complete] Email failed:", e instanceof Error ? e.message : e));
 
-    return res.status(201).json({ success: true, user: safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+    const sessionToken = signSessionToken({ userId: user.id, role: "user" });
+    return res.status(201).json({ success: true, sessionToken, user: safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
   } catch (e: unknown) {
     const msg = String((e as Record<string, unknown>)?.message || "");
     if (msg.includes("23505") || msg.includes("unique")) {

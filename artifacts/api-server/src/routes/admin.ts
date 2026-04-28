@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { usersTable, accountsTable, smsLogsTable } from "@workspace/db/schema";
 import { count, sql } from "drizzle-orm";
+import { requireAdmin, signSessionToken, verifySessionToken } from "../middleware/auth.js";
 import {
   createAdminSessionTokens,
   revokeAdminRefreshToken,
@@ -38,12 +39,6 @@ const adminLoginLimiter = createRouteLimiter({
 });
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "textbanks-admin-2025";
-// Simple signed token: sha256(password + secret)
-const ADMIN_SECRET = process.env.ADMIN_SECRET || "tb_admin_secret_key";
-function makeToken(password: string) {
-  return createHash("sha256").update(password + ADMIN_SECRET).digest("hex");
-}
-const VALID_TOKEN = makeToken(ADMIN_PASSWORD);
 
 router.post("/login", adminLoginLimiter, (req, res) => {
   const { password } = req.body as { password?: string };
@@ -59,6 +54,11 @@ router.post("/login", adminLoginLimiter, (req, res) => {
   }
 
   if (password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ error: "unauthorized", message: "Unauthorized" });
+  }
+
+  const token = signSessionToken({ userId: 0, role: "admin" });
+  res.json({ token });
     recordRetryFailure(req, retryPolicies.adminLogin, subject);
     return res.status(401).json({ error: "unauthorized", message: "Invalid credentials." });
   }
@@ -67,6 +67,11 @@ router.post("/login", adminLoginLimiter, (req, res) => {
   res.json({ token: VALID_TOKEN });
 });
 
+router.post("/verify-token", (req, res) => {
+  const { token } = req.body as { token?: string };
+  const payload = token ? verifySessionToken(token) : null;
+  if (!payload || payload.role !== "admin") {
+    return res.status(401).json({ error: "unauthorized", message: "Unauthorized" });
 router.post("/refresh", (req, res) => {
   const { refreshToken } = req.body as { refreshToken?: string };
   if (!refreshToken) {
@@ -82,6 +87,7 @@ router.post("/refresh", (req, res) => {
   return;
 });
 
+router.use(requireAdmin);
 router.post("/logout", (req, res) => {
   const { refreshToken } = req.body as { refreshToken?: string };
   if (refreshToken) {

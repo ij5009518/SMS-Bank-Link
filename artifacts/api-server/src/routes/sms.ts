@@ -13,6 +13,15 @@ import { eq, desc, and } from "drizzle-orm";
 import { listAccounts, getBalance, listTransactions } from "../lib/teller.js";
 import { decryptTellerAccessToken } from "../lib/security.js";
 import { sendSms, normalizeE164, isConfigured } from "../lib/signalwire.js";
+import { requireAuth } from "../middleware/auth.js";
+
+const router: IRouter = Router();
+
+const PUBLIC_SMS_PATHS = new Set(["/webhook", "/demo"]);
+
+router.use((req, res, next) => {
+  if (PUBLIC_SMS_PATHS.has(req.path)) return next();
+  return requireAuth(req, res, next);
 import { createRouteLimiter } from "../middleware/security.js";
 import { routeSimulateCommand } from "./simulate-command-routing.js";
 import { normalizePhoneDigits } from "../lib/phone-normalization.js";
