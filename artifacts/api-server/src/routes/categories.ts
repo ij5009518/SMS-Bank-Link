@@ -136,6 +136,8 @@ router.delete("/:id", async (req, res) => {
 // Classifies a transaction description using fast keyword matching with AI fallback.
 router.post("/categorize", async (req, res) => {
   const userId = parseInt(req.params.userId);
+  if (isNaN(userId)) return res.status(400).json({ error: "bad_request", message: "Invalid user ID." });
+
   const { description } = req.body as { description?: string };
   if (!description) return res.status(400).json({ error: "bad_request", message: "Description is required." });
 
