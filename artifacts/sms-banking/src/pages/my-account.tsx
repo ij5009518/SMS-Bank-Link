@@ -51,9 +51,19 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PublicLayout } from "@/components/layout/PublicLayout";
+import { useGetUserTransactions, useGetSmsLogs, useGetUser, useTellerEnroll, useGetTellerConfig, getGetUserQueryKey } from "@workspace/api-client-react";
 import { TextBanksLogo } from "@/components/layout/Logo";
 import { useGetUserTransactions, useGetSmsLogs, useGetUser, useTellerEnroll, useGetTellerConfig, getGetUserQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { AccountsSection } from "@/components/my-account/AccountsSection";
+import { ActivitySection } from "@/components/my-account/ActivitySection";
+import { SpendingSection } from "@/components/my-account/SpendingSection";
+import { AlertsSection } from "@/components/my-account/AlertsSection";
+import { SmsLogsSection } from "@/components/my-account/SmsLogsSection";
+import { SettingsSection } from "@/components/my-account/SettingsSection";
+import { AuthPanel } from "@/components/my-account/AuthPanel";
+import { DeviceVerifyModal } from "@/components/my-account/DeviceVerifyModal";
+import { ForgotPasswordModal } from "@/components/my-account/ForgotPasswordModal";
 
 declare global {
   interface Window {
@@ -898,15 +908,7 @@ export default function MyAccountPage() {
 
           {/* ── Auth Screen ── */}
           {!session && (
-            <motion.div key="auth" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}
-              className="flex flex-col items-center justify-center py-16 px-4 min-h-screen"
-            >
-              <div className="flex flex-col items-center mb-8">
-                <TextBanksLogo size={40} />
-                <h1 className="text-2xl font-display font-bold text-[#0D0E12] mt-3 mb-1">Welcome back</h1>
-                <p className="text-sm text-[#7C7C8A]">Sign in to manage your account</p>
-              </div>
-
+            <AuthPanel>
               <div className="w-full max-w-sm bg-white rounded-2xl border border-[#E5E0D8] shadow-sm overflow-hidden">
                 <div className="flex border-b border-[#EDE8E0]">
                   {(["signin", "signup"] as const).map((t) => (
@@ -923,58 +925,17 @@ export default function MyAccountPage() {
                   {/* ── Device Verification Screen ── */}
                   {deviceStep === "verify" && (
                     <motion.div key="device-verify" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-                      <div className="p-6 space-y-4">
-                        <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                          <div className="w-9 h-9 bg-amber-100 rounded-lg flex items-center justify-center shrink-0">
-                            <ShieldCheck className="w-5 h-5 text-amber-700" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-amber-900">New Device Detected</p>
-                            <p className="text-xs text-amber-700">Hi {deviceFirstName} — verify this browser to continue.</p>
-                          </div>
-                        </div>
-                        {deviceEmailMasked ? (
-                          <p className="text-xs text-[#7C7C8A] leading-relaxed">
-                            A 6-digit code was sent to <strong className="text-[#2C2C35]">{deviceEmailMasked}</strong>. Enter it below to trust this device for 30 days.
-                          </p>
-                        ) : (
-                          <p className="text-xs text-[#7C7C8A] leading-relaxed">
-                            A 6-digit code was sent to your registered phone number. Enter it below to trust this device for 30 days.
-                          </p>
-                        )}
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-[#2C2C35]">Verification Code</label>
-                          <Input
-                            value={deviceCode}
-                            onChange={(e) => setDeviceCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                            onKeyDown={(e) => e.key === "Enter" && deviceCode.length === 6 && handleVerifyDevice()}
-                            placeholder="000000"
-                            className="h-11 border-blue-300 rounded-xl text-lg font-mono tracking-widest text-center"
-                            maxLength={6}
-                            autoFocus
-                          />
-                        </div>
-                        {deviceError && (
-                          <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
-                            <AlertCircle className="w-4 h-4 shrink-0" />{deviceError}
-                          </div>
-                        )}
-                        <Button
-                          className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm"
-                          onClick={handleVerifyDevice}
-                          disabled={deviceLoading || deviceCode.length !== 6}
-                        >
-                          {deviceLoading ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Verifying…</> : "Verify & Sign In"}
-                        </Button>
-                        <div className="flex items-center justify-between text-xs text-[#9A9AA8]">
-                          <button onClick={handleResendDeviceCode} disabled={deviceLoading} className="text-blue-600 hover:underline font-medium disabled:opacity-50">
-                            Resend code
-                          </button>
-                          <button onClick={() => { setDeviceStep("idle"); setDeviceCode(""); setDeviceError(null); }} className="text-[#9A9AA8] hover:text-[#3C3C4A]">
-                            Back to sign in
-                          </button>
-                        </div>
-                      </div>
+                      <DeviceVerifyModal
+                        deviceFirstName={deviceFirstName}
+                        deviceEmailMasked={deviceEmailMasked}
+                        deviceCode={deviceCode}
+                        setDeviceCode={setDeviceCode}
+                        deviceError={deviceError}
+                        deviceLoading={deviceLoading}
+                        onVerify={handleVerifyDevice}
+                        onResend={handleResendDeviceCode}
+                        onBack={() => { setDeviceStep("idle"); setDeviceCode(""); setDeviceError(null); }}
+                      />
                     </motion.div>
                   )}
 
@@ -1146,7 +1107,7 @@ export default function MyAccountPage() {
                   )}
                 </AnimatePresence>
               </div>
-            </motion.div>
+            </AuthPanel>
           )}
 
           {/* ── Dashboard ── */}
@@ -1354,6 +1315,7 @@ export default function MyAccountPage() {
                 <AnimatePresence mode="wait">
                   {/* ── Accounts ── */}
                   {activeSection === "accounts" && (
+                    <AccountsSection>
                     <motion.div key="accounts" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3">
 
                       {/* Status notifications */}
@@ -1444,10 +1406,12 @@ export default function MyAccountPage() {
                         </>
                       )}
                     </motion.div>
+                    </AccountsSection>
                   )}
 
                   {/* ── Transactions ── */}
                   {activeSection === "activity" && (
+                    <ActivitySection>
                     <motion.div key="activity" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                       <div className="bg-white border border-[#E5E0D8] rounded-2xl overflow-hidden">
                         <div className="px-5 py-4 border-b border-[#EDE8E0] flex items-center justify-between">
@@ -1507,10 +1471,12 @@ export default function MyAccountPage() {
                         )}
                       </div>
                     </motion.div>
+                    </ActivitySection>
                   )}
 
                   {/* ── Spending Analysis ── */}
                   {activeSection === "spend" && (
+                    <SpendingSection>
                     <motion.div key="spend" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
 
                       {/* Period toggle */}
@@ -1720,10 +1686,12 @@ export default function MyAccountPage() {
                         </div>
                       </div>
                     </motion.div>
+                    </SpendingSection>
                   )}
 
                   {/* ── Alerts Configuration ── */}
                   {activeSection === "alerts" && (
+                    <AlertsSection>
                     <motion.div key="alerts" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
 
                       <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-3">
@@ -1835,10 +1803,12 @@ export default function MyAccountPage() {
                         <p className="text-xs text-[#7C7C8A] leading-relaxed">Alerts are sent via SMS to your registered phone number. Standard messaging rates may apply. You can turn off all alerts by texting <code className="bg-slate-200 text-[#2C2C35] px-1.5 py-0.5 rounded font-mono text-[11px]">STOP</code> at any time.</p>
                       </div>
                     </motion.div>
+                    </AlertsSection>
                   )}
 
                   {/* ── SMS Activity ── */}
                   {activeSection === "sms" && (
+                    <SmsLogsSection>
                     <motion.div key="sms" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                       <div className="bg-white border border-[#E5E0D8] rounded-2xl overflow-hidden">
                         <div className="px-5 py-4 border-b border-[#EDE8E0] flex items-center justify-between">
@@ -1915,10 +1885,12 @@ export default function MyAccountPage() {
                         </div>
                       </div>
                     </motion.div>
+                    </SmsLogsSection>
                   )}
 
                   {/* ── Settings ── */}
                   {activeSection === "settings" && (
+                    <SettingsSection onOpenReportBug={() => setShowReportBug(true)}>
                     <motion.div key="settings" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-5">
 
                       {/* Profile */}
@@ -2414,7 +2386,6 @@ export default function MyAccountPage() {
                           )}
                         </div>
                       </div>
-
                       {/* Save button + errors */}
                       {settingsError && (
                         <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
@@ -2434,6 +2405,7 @@ export default function MyAccountPage() {
                         {settingsSaving ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Saving…</> : "Save Settings"}
                       </Button>
                     </motion.div>
+                    </SettingsSection>
                   )}
                 </AnimatePresence>
               </div>
@@ -2442,149 +2414,25 @@ export default function MyAccountPage() {
         </AnimatePresence>
       </div>
 
-      {/* ── Forgot Password Modal ── */}
-      <AnimatePresence>
-        {showForgotPw && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4"
-            onClick={(e) => e.target === e.currentTarget && setShowForgotPw(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden"
-            >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-[#EDE8E0]">
-                <div>
-                  <h2 className="text-base font-bold text-[#0D0E12]">Reset Password</h2>
-                  <p className="text-xs text-[#7C7C8A]">
-                    {forgotStep === "email" ? "Email reset link" : forgotStep === "sms" ? "SMS OTP" : "Enter new password"}
-                  </p>
-                </div>
-                <button onClick={() => setShowForgotPw(false)} className="text-[#9A9AA8] hover:text-[#3C3C4A] p-1 rounded-lg hover:bg-[#F0ECE5]">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="p-5 space-y-4">
-                {forgotSuccess ? (
-                  <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-semibold text-emerald-800">Done!</p>
-                      <p className="text-xs text-emerald-700 mt-0.5">{forgotSuccess}</p>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {/* Method toggle */}
-                    {forgotStep !== "reset" && (
-                      <div className="flex rounded-xl overflow-hidden border border-[#E5E0D8]">
-                        <button
-                          className={cn("flex-1 py-2 text-xs font-semibold transition-colors",
-                            forgotStep === "email" ? "bg-blue-700 text-white" : "text-[#7C7C8A] hover:bg-[#F8F6F2]"
-                          )}
-                          onClick={() => { setForgotStep("email"); setForgotError(null); }}
-                        >Email link</button>
-                        <button
-                          className={cn("flex-1 py-2 text-xs font-semibold transition-colors",
-                            forgotStep === "sms" ? "bg-blue-700 text-white" : "text-[#7C7C8A] hover:bg-[#F8F6F2]"
-                          )}
-                          onClick={() => { setForgotStep("sms"); setForgotError(null); }}
-                        >SMS OTP</button>
-                      </div>
-                    )}
-
-                    {forgotStep === "email" && (
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-[#2C2C35]">Email address</label>
-                        <div className="relative">
-                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9A9AA8]" />
-                          <Input
-                            type="email" placeholder="your@email.com"
-                            className="pl-9 rounded-xl border-[#E5E0D8] h-10 text-sm"
-                            value={forgotEmail}
-                            onChange={(e) => setForgotEmail(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && handleForgotPassword()}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {forgotStep === "sms" && (
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-[#2C2C35]">Mobile number</label>
-                        <PhoneInput
-                          value={forgotPhone}
-                          onChange={(v) => setForgotPhone(v)}
-                          placeholder="(555) 123-4567"
-                        />
-                      </div>
-                    )}
-
-                    {forgotStep === "reset" && (
-                      <div className="space-y-3">
-                        <p className="text-xs text-[#3C3C4A]">Enter the 6-digit code sent to your phone, then choose a new password.</p>
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-[#2C2C35]">OTP Code</label>
-                          <Input
-                            value={forgotOtp}
-                            onChange={(e) => setForgotOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                            placeholder="000000"
-                            maxLength={6}
-                            className="h-10 font-mono tracking-widest text-center rounded-xl border-[#E5E0D8] text-sm"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-[#2C2C35]">New password</label>
-                          <div className="relative">
-                            <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9A9AA8]" />
-                            <Input
-                              type="password"
-                              value={forgotNewPw}
-                              onChange={(e) => setForgotNewPw(e.target.value)}
-                              placeholder="Min 6 characters"
-                              className="pl-9 h-10 rounded-xl border-[#E5E0D8] text-sm"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {forgotError && (
-                      <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                        <AlertCircle className="w-4 h-4 shrink-0" />{forgotError}
-                      </div>
-                    )}
-
-                    <Button
-                      className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm"
-                      onClick={forgotStep === "reset" ? handleForgotOtpReset : handleForgotPassword}
-                      disabled={forgotLoading || (forgotStep === "email" && !forgotEmail.trim()) || (forgotStep === "sms" && forgotPhone.replace(/\D/g, "").length < 10) || (forgotStep === "reset" && (forgotOtp.length < 6 || forgotNewPw.length < 6))}
-                    >
-                      {forgotLoading ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Sending…</> :
-                        forgotStep === "reset" ? "Reset Password" :
-                        forgotStep === "sms" ? "Send OTP" : "Send Reset Link"}
-                    </Button>
-                  </>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Floating Report Bug Button ── */}
-      {!showReportBug && (
-        <button
-          onClick={() => setShowReportBug(true)}
-          className="fixed bottom-5 right-5 z-50 flex items-center gap-2 bg-white border border-[#E5E0D8] text-[#5C5C6B] hover:text-[#0D0E12] hover:border-[#C8C0B5] hover:shadow-md shadow-sm rounded-full px-3.5 py-2 text-xs font-medium transition-all duration-150"
-          title="Report a bug"
-        >
-          <Bug className="w-3.5 h-3.5 text-red-400" />
-          Report a bug
-        </button>
-      )}
+      <ForgotPasswordModal
+        open={showForgotPw}
+        onClose={() => setShowForgotPw(false)}
+        forgotStep={forgotStep}
+        setForgotStep={setForgotStep}
+        forgotSuccess={forgotSuccess}
+        forgotError={forgotError}
+        forgotLoading={forgotLoading}
+        forgotEmail={forgotEmail}
+        setForgotEmail={setForgotEmail}
+        forgotPhone={forgotPhone}
+        setForgotPhone={setForgotPhone}
+        forgotOtp={forgotOtp}
+        setForgotOtp={setForgotOtp}
+        forgotNewPw={forgotNewPw}
+        setForgotNewPw={setForgotNewPw}
+        onRequest={handleForgotPassword}
+        onReset={handleForgotOtpReset}
+      />
 
       {/* ── Report Bug Modal ── */}
       <AnimatePresence>
