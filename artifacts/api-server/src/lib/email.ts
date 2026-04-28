@@ -204,6 +204,101 @@ export async function sendPasswordResetEmail(to: string, firstName: string, rese
   }
 }
 
+export async function sendContactNotificationEmail({
+  name,
+  email,
+  subject,
+  message,
+  type,
+}: {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  type: string;
+}): Promise<boolean> {
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+    const adminEmail = process.env.ADMIN_EMAIL || "admin@textbanks.com";
+    const normalizedType = type.trim();
+    const normalizedSubject = subject.trim();
+    const safeName = escapeHtml(name.trim());
+    const safeEmail = escapeHtml(email.trim());
+    const safeSubject = escapeHtml(normalizedSubject);
+    const safeType = escapeHtml(normalizedType);
+    const safeMessage = escapeHtml(message.trim());
+
+    const { data, error } = await client.emails.send({
+      from: fromEmail,
+      to: adminEmail,
+      replyTo: email.trim() || undefined,
+      subject: `[Text Banks Contact] ${normalizedType}: ${normalizedSubject}`,
+      html: `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:24px;background:#f8fafc;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+        <tr><td style="padding:20px 24px;background:#0f172a;color:#fff;">
+          <h1 style="margin:0;font-size:18px;">New contact submission</h1>
+        </td></tr>
+        <tr><td style="padding:24px;">
+          <p style="margin:0 0 10px;font-size:14px;color:#334155;"><strong>Type:</strong> ${safeType}</p>
+          <p style="margin:0 0 10px;font-size:14px;color:#334155;"><strong>Name:</strong> ${safeName}</p>
+          <p style="margin:0 0 10px;font-size:14px;color:#334155;"><strong>Email:</strong> ${safeEmail}</p>
+          <p style="margin:0 0 14px;font-size:14px;color:#334155;"><strong>Subject:</strong> ${safeSubject}</p>
+          <div style="padding:16px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;color:#0f172a;white-space:pre-wrap;font-size:14px;line-height:1.5;">${safeMessage}</div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`,
+    });
+
+    if (error) {
+      console.error("[Email] Resend error (contact notification):", { error, email, type: normalizedType, subject: normalizedSubject });
+      return false;
+    }
+
+    if (!data?.id) {
+      console.error("[Email] Contact notification not accepted by provider", {
+        adminEmail,
+        email,
+        type: normalizedType,
+        subject: normalizedSubject,
+        resendData: data ?? null,
+      });
+      return false;
+    }
+
+    console.log("[Email] Contact notification email accepted", {
+      adminEmail,
+      email,
+      type: normalizedType,
+      subject: normalizedSubject,
+      resendId: data.id,
+    });
+    return true;
+  } catch (err) {
+    console.warn("[Email] Could not send contact notification email:", {
+      error: err instanceof Error ? err.message : err,
+      email,
+      type,
+      subject,
+    });
+    return false;
+  }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 export async function isEmailConfigured(): Promise<boolean> {
   try {
     await getCredentials();
