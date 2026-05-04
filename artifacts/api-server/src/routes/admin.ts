@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { usersTable, accountsTable, smsLogsTable } from "@workspace/db/schema";
 import { count, sql } from "drizzle-orm";
-import { requireAdmin, signSessionToken, verifySessionToken } from "../middleware/auth.js";
+import { requireAdmin } from "../middleware/auth.js";
 import {
   createAdminSessionTokens,
   revokeAdminRefreshToken,
@@ -26,52 +26,8 @@ router.post("/login", async (req, res) => {
 
   res.json(createAdminSessionTokens());
   return;
-import { eq, count, sql } from "drizzle-orm";
-import { createHash } from "crypto";
-import { createRouteLimiter, enforceRetryLockout, recordRetryFailure, clearRetryFailures, retryPolicies } from "../middleware/security.js";
-
-const router: IRouter = Router();
-
-const adminLoginLimiter = createRouteLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 8,
-  message: "Too many admin login attempts. Please wait and try again.",
 });
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "textbanks-admin-2025";
-
-router.post("/login", adminLoginLimiter, (req, res) => {
-  const { password } = req.body as { password?: string };
-  const subject = "admin";
-
-  if (enforceRetryLockout(req, res, retryPolicies.adminLogin, subject)) {
-    return;
-  }
-
-  if (!password) {
-    recordRetryFailure(req, retryPolicies.adminLogin, subject);
-    return res.status(400).json({ error: "bad_request", message: "Password is required." });
-  }
-
-  if (password !== ADMIN_PASSWORD) {
-    return res.status(401).json({ error: "unauthorized", message: "Unauthorized" });
-  }
-
-  const token = signSessionToken({ userId: 0, role: "admin" });
-  res.json({ token });
-    recordRetryFailure(req, retryPolicies.adminLogin, subject);
-    return res.status(401).json({ error: "unauthorized", message: "Invalid credentials." });
-  }
-
-  clearRetryFailures(req, retryPolicies.adminLogin, subject);
-  res.json({ token: VALID_TOKEN });
-});
-
-router.post("/verify-token", (req, res) => {
-  const { token } = req.body as { token?: string };
-  const payload = token ? verifySessionToken(token) : null;
-  if (!payload || payload.role !== "admin") {
-    return res.status(401).json({ error: "unauthorized", message: "Unauthorized" });
 router.post("/refresh", (req, res) => {
   const { refreshToken } = req.body as { refreshToken?: string };
   if (!refreshToken) {
@@ -88,6 +44,7 @@ router.post("/refresh", (req, res) => {
 });
 
 router.use(requireAdmin);
+
 router.post("/logout", (req, res) => {
   const { refreshToken } = req.body as { refreshToken?: string };
   if (refreshToken) {

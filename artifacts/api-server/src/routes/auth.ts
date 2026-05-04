@@ -98,20 +98,18 @@ router.post("/login", loginLimiter, async (req, res) => {
     return res.status(400).json({ error: "bad_request", message: "Phone number and password are required." });
   }
 
-  const normalized = phoneNumber.replace(/\D/g, "");
-  const subject = normalized || "anonymous";
   const normalized = normalizePhoneDigits(phoneNumber);
-  if (!normalized) {
-    return res.status(400).json({ error: "bad_request", message: "Please enter a valid phone number." });
-  }
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.phoneNumberDigits, normalized));
+  const subject = normalized || "anonymous";
 
   if (enforceRetryLockout(req, res, retryPolicies.userLogin, subject)) {
     return;
   }
 
-  const allUsers = await db.select().from(usersTable);
-  const user = allUsers.find((u) => u.phoneNumber.replace(/\D/g, "") === normalized);
+  if (!normalized) {
+    return res.status(400).json({ error: "bad_request", message: "Please enter a valid phone number." });
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.phoneNumberDigits, normalized));
 
   if (!user || !user.passwordHash) {
     recordRetryFailure(req, retryPolicies.userLogin, subject);
@@ -271,10 +269,8 @@ router.post("/verify-phone", otpLimiter, async (req, res) => {
   }
 
   if (!verifyVerificationToken(code.trim(), user.phoneVerificationCodeHash, user.phoneVerificationCodeSalt) && user.phoneVerificationCode !== code.trim()) {
+    recordRetryFailure(req, retryPolicies.otp, subject);
     return res.status(400).json({ error: "invalid_code", message: "That code is incorrect. Please check your SMS and try again." });
-  if (user.phoneVerificationCode !== code.trim()) {
-    recordRetryFailure(req, retryPolicies.otp, String(userId));
-    return res.status(400).json({ error: "invalid_code", message: "Invalid or expired verification code." });
   }
 
   clearRetryFailures(req, retryPolicies.otp, subject);
@@ -440,10 +436,8 @@ router.post("/verify-device", otpLimiter, async (req, res) => {
     return res.status(400).json({ error: "code_expired", message: "Invalid or expired verification code." });
   }
   if (!verifyVerificationToken(code.trim(), user.deviceVerificationCodeHash, user.deviceVerificationCodeSalt) && user.deviceVerificationCode !== code.trim()) {
-    return res.status(400).json({ error: "invalid_code", message: "Incorrect code. Check your email or phone and try again." });
-  if (user.deviceVerificationCode !== code.trim()) {
     recordRetryFailure(req, retryPolicies.otp, subject);
-    return res.status(400).json({ error: "invalid_code", message: "Invalid or expired verification code." });
+    return res.status(400).json({ error: "invalid_code", message: "Incorrect code. Check your email or phone and try again." });
   }
 
   clearRetryFailures(req, retryPolicies.otp, subject);
@@ -587,10 +581,8 @@ router.post("/confirm-phone-change", otpLimiter, async (req, res) => {
   }
 
   if (!verifyVerificationToken(code.trim(), user.pendingPhoneCodeHash, user.pendingPhoneCodeSalt) && user.pendingPhoneCode !== code.trim()) {
-    return res.status(400).json({ error: "invalid_code", message: "That code is incorrect. Check your new number's SMS." });
-  if (user.pendingPhoneCode !== code.trim()) {
     recordRetryFailure(req, retryPolicies.otp, subject);
-    return res.status(400).json({ error: "invalid_code", message: "Invalid or expired verification code." });
+    return res.status(400).json({ error: "invalid_code", message: "That code is incorrect. Check your new number's SMS." });
   }
 
   clearRetryFailures(req, retryPolicies.otp, subject);
@@ -685,12 +677,11 @@ router.post("/reset-password-token", passwordResetLimiter, async (req, res) => {
 
   const allUsers = await db.select().from(usersTable);
   const user = allUsers.find((u) => verifyVerificationToken(token, u.passwordResetTokenHash, u.passwordResetTokenSalt) || u.passwordResetToken === token);
-  if (!user) return res.status(404).json({ error: "invalid_token", message: "This reset link is invalid or has already been used." });
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.passwordResetToken, token));
   if (!user) {
     recordRetryFailure(req, retryPolicies.passwordReset, subject);
-    return res.status(404).json({ error: "invalid_token", message: "Unable to reset password with that code." });
+    return res.status(404).json({ error: "invalid_token", message: "This reset link is invalid or has already been used." });
   }
+
   if (user.passwordResetTokenExpiry && new Date() > new Date(user.passwordResetTokenExpiry)) {
     recordRetryFailure(req, retryPolicies.passwordReset, subject);
     return res.status(400).json({ error: "token_expired", message: "Unable to reset password with that code." });
@@ -714,17 +705,16 @@ router.post("/reset-password-otp", passwordResetLimiter, async (req, res) => {
   if (newPassword.length < 6) return res.status(400).json({ error: "bad_request", message: "Password must be at least 6 characters." });
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
-  if (!user) return res.status(404).json({ error: "not_found", message: "User not found." });
-  if ((!user.passwordResetOtpHash && !user.passwordResetOtp) || (!verifyVerificationToken(otp, user.passwordResetOtpHash, user.passwordResetOtpSalt) && user.passwordResetOtp !== otp)) {
-    return res.status(401).json({ error: "invalid_otp", message: "Incorrect code. Please try again." });
   if (!user) {
     recordRetryFailure(req, retryPolicies.passwordReset, subject);
-    return res.status(404).json({ error: "not_found", message: "Unable to reset password with that code." });
+    return res.status(404).json({ error: "not_found", message: "User not found." });
   }
-  if (!user.passwordResetOtp || user.passwordResetOtp !== otp) {
+
+  if ((!user.passwordResetOtpHash && !user.passwordResetOtp) || (!verifyVerificationToken(otp, user.passwordResetOtpHash, user.passwordResetOtpSalt) && user.passwordResetOtp !== otp)) {
     recordRetryFailure(req, retryPolicies.passwordReset, subject);
-    return res.status(401).json({ error: "invalid_otp", message: "Unable to reset password with that code." });
+    return res.status(401).json({ error: "invalid_otp", message: "Incorrect code. Please try again." });
   }
+
   if (user.passwordResetOtpExpiry && new Date() > new Date(user.passwordResetOtpExpiry)) {
     recordRetryFailure(req, retryPolicies.passwordReset, subject);
     return res.status(400).json({ error: "otp_expired", message: "Unable to reset password with that code." });

@@ -14,20 +14,12 @@ import { listAccounts, getBalance, listTransactions } from "../lib/teller.js";
 import { decryptTellerAccessToken } from "../lib/security.js";
 import { sendSms, normalizeE164, isConfigured } from "../lib/signalwire.js";
 import { requireAuth } from "../middleware/auth.js";
+import { createRouteLimiter } from "../middleware/security.js";
+import { normalizePhoneDigits } from "../lib/phone-normalization.js";
 
 const router: IRouter = Router();
 
 const PUBLIC_SMS_PATHS = new Set(["/webhook", "/demo"]);
-
-router.use((req, res, next) => {
-  if (PUBLIC_SMS_PATHS.has(req.path)) return next();
-  return requireAuth(req, res, next);
-import { createRouteLimiter } from "../middleware/security.js";
-import { routeSimulateCommand } from "./simulate-command-routing.js";
-import { normalizePhoneDigits } from "../lib/phone-normalization.js";
-import { dispatchSimulateCommand } from "./smsDispatch.js";
-
-const router: IRouter = Router();
 
 const smsWebhookLimiter = createRouteLimiter({
   windowMs: 60 * 1000,
@@ -45,6 +37,11 @@ const smsSimulateLimiter = createRouteLimiter({
   windowMs: 5 * 60 * 1000,
   max: 25,
   message: "Too many simulation requests. Please wait before trying again.",
+});
+
+router.use((req, res, next) => {
+  if (PUBLIC_SMS_PATHS.has(req.path)) return next();
+  return requireAuth(req, res, next);
 });
 
 router.get("/logs", async (req, res) => {
@@ -291,31 +288,6 @@ router.post("/simulate", smsSimulateLimiter, async (req, res) => {
     } else {
       responseText = "Unknown command. Reply HELP for available commands.";
     }
-    const responseText = await routeSimulateCommand(cmd, {
-      onHelp: () => "TextBank Commands:\nBAL - All balances\nBAL [nick] - One account\nTRANS - Last 5 transactions\nTRANS [n] - Last N transactions\nLAST - Most recent transaction\nLIMIT - Credit card limits\nSPEND - Monthly spend total\nSTOP - Opt out\nSTART - Re-subscribe",
-      onStop: async () => {
-        await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, userId));
-        return "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
-      },
-      onBalance: () => handleBalance(cmd, userId, enrollment?.accessToken),
-      onTransactions: () => handleTransactions(cmd, userId, enrollment?.accessToken),
-      onLast: () => handleLastTransaction(userId, enrollment?.accessToken),
-      onLimit: () => handleCreditLimit(userId, enrollment?.accessToken),
-      onSpend: () => handleSpend(userId, enrollment?.accessToken),
-      onUnknown: () => "Unknown command. Reply HELP for available commands.",
-    const responseText = await dispatchSimulateCommand(cmd, {
-      help: () => "TextBank Commands:\nBAL - All balances\nBAL [nick] - One account\nTRANS - Last 5 transactions\nTRANS [n] - Last N transactions\nLAST - Most recent transaction\nLIMIT - Credit card limits\nSPEND - Monthly spend total\nSTOP - Opt out\nSTART - Re-subscribe",
-      stop: async () => {
-        await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, userId));
-        return "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
-      },
-      balance: (currentCmd) => handleBalance(currentCmd, userId, enrollment?.accessToken),
-      transactions: (currentCmd) => handleTransactions(currentCmd, userId, enrollment?.accessToken),
-      last: () => handleLastTransaction(userId, enrollment?.accessToken),
-      limit: () => handleCreditLimit(userId, enrollment?.accessToken),
-      spend: () => handleSpend(userId, enrollment?.accessToken),
-      unknown: () => "Unknown command. Reply HELP for available commands.",
-    });
 
     // Send real SMS if configured
     let smsSid: string | null = null;
@@ -583,10 +555,11 @@ async function handleSpend(userId: number, accessToken?: string): Promise<string
           const txns = await listTransactions(decryptTellerAccessToken(firstEnrollment), acct.id, 50);
           for (const t of txns) {
             if (t.type !== "debit") continue;
-            if (new Date(t.date) < monthStart) continue;
+            const txDate = new Date(t.date);
+            if (txDate < monthStart) continue;
             const amount = Math.abs(parseFloat(t.amount));
             totalSpend += amount;
-            const cat = t.details?.category || "other";
+            const cat = t.details?.category || "Other";
             categoryTotals.set(cat, (categoryTotals.get(cat) ?? 0) + amount);
           }
         })
