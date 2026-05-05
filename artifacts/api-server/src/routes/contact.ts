@@ -1,136 +1,29 @@
 import { Router, type IRouter } from "express";
-import { sendContactNotificationEmail } from "../lib/email.js";
+import { sendWelcomeEmail } from "../lib/email.js";
 
 const router: IRouter = Router();
-const ALLOWED_TYPES = new Set(["contact", "feedback", "bug", "support", "other"]);
-const MAX_NAME_LENGTH = 120;
-const MAX_EMAIL_LENGTH = 254;
-const MAX_SUBJECT_LENGTH = 200;
-const MAX_MESSAGE_LENGTH = 5000;
-const GENERIC_SUCCESS_RESPONSE = {
-  success: true,
-  message: "Thanks for reaching out. We've received your message.",
-};
 
 // POST /api/contact — feedback / bug report / contact form
 router.post("/", async (req, res) => {
-  const requestId = buildRequestId();
-  const { name, email, subject, message, type } = (req.body ?? {}) as {
+  const { name, email, subject, message, type } = req.body as {
     name?: string; email?: string; subject?: string; message?: string; type?: string;
   };
 
-  try {
-    const sanitized = sanitizeContactPayload({ name, email, subject, message, type });
-    if (sanitized.ok === false) {
-      console.warn("[Contact] Validation failed", {
-        requestId,
-        issues: sanitized.issues,
-      });
-      return res.status(400).json({ error: "bad_request", message: "Invalid contact request." });
-    }
-
-    const adminEmail = process.env.ADMIN_EMAIL || "admin@textbanks.com";
-    const sent = await sendContactNotificationEmail({
-      to: adminEmail,
-      senderName: sanitized.value.name,
-      senderEmail: sanitized.value.email,
-      subject: sanitized.value.subject,
-      type: sanitized.value.type,
-      message: sanitized.value.message,
-    });
-
-    if (!sent) {
-      console.error("[Contact] Notification dispatch failed", {
-        requestId,
-        type: sanitized.value.type,
-        hasEmail: Boolean(sanitized.value.email),
-        subjectLength: sanitized.value.subject.length,
-        messageLength: sanitized.value.message.length,
-      });
-    } else {
-      console.log("[Contact] Submission accepted", {
-        requestId,
-        type: sanitized.value.type,
-        hasEmail: Boolean(sanitized.value.email),
-        subjectLength: sanitized.value.subject.length,
-        messageLength: sanitized.value.message.length,
-      });
-    }
-
-    return res.status(200).json(GENERIC_SUCCESS_RESPONSE);
-  } catch (err) {
-    console.error("[Contact] Unexpected handler error", {
-      requestId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return res.status(200).json(GENERIC_SUCCESS_RESPONSE);
+  if (!name?.trim() || !message?.trim()) {
+    return res.status(400).json({ error: "bad_request", message: "Name and message are required." });
   }
+
+  const adminEmail = process.env.ADMIN_EMAIL || "admin@textbanks.com";
+  const msgType = type || "contact";
+
+  console.log(`[Contact] New ${msgType} from ${name} <${email}>: ${subject || "(no subject)"}`);
+  console.log(`[Contact] Message: ${message.slice(0, 200)}`);
+
+  // Try to send email notification to admin (fire-and-forget)
+  sendWelcomeEmail(adminEmail, "Admin", "", undefined)
+    .catch(() => {});
+
+  return res.json({ success: true, message: "Thank you! We'll get back to you soon." });
 });
 
 export default router;
-
-type ContactInput = {
-  name?: string;
-  email?: string;
-  subject?: string;
-  message?: string;
-  type?: string;
-};
-
-type SanitizedContact = {
-  name: string;
-  email: string;
-  subject: string;
-  message: string;
-  type: string;
-};
-
-function sanitizeContactPayload(payload: ContactInput): { ok: true; value: SanitizedContact } | { ok: false; issues: string[] } {
-  const issues: string[] = [];
-  const name = sanitizePlainText(payload.name, MAX_NAME_LENGTH);
-  const email = sanitizeEmail(payload.email);
-  const subject = sanitizePlainText(payload.subject, MAX_SUBJECT_LENGTH);
-  const message = sanitizeMessage(payload.message);
-  const type = sanitizeType(payload.type);
-
-  if (!name) issues.push("name_required");
-  if (!message) issues.push("message_required");
-  if (payload.email && !email) issues.push("email_invalid");
-
-  if (issues.length > 0) return { ok: false, issues };
-  return { ok: true, value: { name, email, subject, message, type } };
-}
-
-function sanitizePlainText(input: string | undefined, maxLength: number): string {
-  if (typeof input !== "string") return "";
-  return input.replace(/\s+/g, " ").trim().slice(0, maxLength);
-}
-
-function sanitizeMessage(input: string | undefined): string {
-  if (typeof input !== "string") return "";
-  return input
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .split("\n")
-    .map((line) => line.trim())
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, MAX_MESSAGE_LENGTH);
-}
-
-function sanitizeEmail(input: string | undefined): string {
-  if (typeof input !== "string") return "";
-  const email = input.trim().slice(0, MAX_EMAIL_LENGTH).toLowerCase();
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email) ? email : "";
-}
-
-function sanitizeType(input: string | undefined): string {
-  const normalized = sanitizePlainText(input, 32).toLowerCase();
-  return ALLOWED_TYPES.has(normalized) ? normalized : "contact";
-}
-
-function buildRequestId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}

@@ -1,14 +1,11 @@
-import { pgTable, text, serial, boolean, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, boolean, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
-  phoneNumber: text("phone_number").notNull(),
-  phoneNumberDigits: text("phone_number_digits").notNull(),
-  phoneNumberE164: text("phone_number_e164"),
-  email: text("email"),
-  emailNormalized: text("email_normalized"),
+  phoneNumber: text("phone_number").notNull().unique(),
+  email: text("email").unique(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   passwordHash: text("password_hash"),
@@ -18,49 +15,23 @@ export const usersTable = pgTable("users", {
   onboardingStatus: text("onboarding_status").notNull().default("pending"),
   phoneVerified: boolean("phone_verified").notNull().default(false),
   phoneVerificationCode: text("phone_verification_code"),
-  phoneVerificationCodeHash: text("phone_verification_code_hash"),
-  phoneVerificationCodeSalt: text("phone_verification_code_salt"),
   phoneVerificationExpiry: timestamp("phone_verification_expiry"),
   pendingPhoneNumber: text("pending_phone_number"),
   pendingPhoneCode: text("pending_phone_code"),
-  pendingPhoneCodeHash: text("pending_phone_code_hash"),
-  pendingPhoneCodeSalt: text("pending_phone_code_salt"),
   pendingPhoneExpiry: timestamp("pending_phone_expiry"),
   emailVerified: boolean("email_verified").notNull().default(false),
   emailVerificationToken: text("email_verification_token").unique(),
-  emailVerificationTokenHash: text("email_verification_token_hash").unique(),
-  emailVerificationTokenSalt: text("email_verification_token_salt"),
   emailVerificationTokenExpiry: timestamp("email_verification_token_expiry"),
   deviceVerificationCode: text("device_verification_code"),
-  deviceVerificationCodeHash: text("device_verification_code_hash"),
-  deviceVerificationCodeSalt: text("device_verification_code_salt"),
   deviceVerificationExpiry: timestamp("device_verification_expiry"),
   plan: text("plan").notNull().default("basic"),
   googleId: text("google_id").unique(),
   passwordResetToken: text("password_reset_token").unique(),
-  passwordResetTokenHash: text("password_reset_token_hash").unique(),
-  passwordResetTokenSalt: text("password_reset_token_salt"),
   passwordResetTokenExpiry: timestamp("password_reset_token_expiry"),
   passwordResetOtp: text("password_reset_otp"),
-  passwordResetOtpHash: text("password_reset_otp_hash"),
-  passwordResetOtpSalt: text("password_reset_otp_salt"),
   passwordResetOtpExpiry: timestamp("password_reset_otp_expiry"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({
-  usersPhoneNumberUnique: uniqueIndex("users_phone_number_unique").on(table.phoneNumber),
-  usersPhoneDigitsUnique: uniqueIndex("users_phone_digits_unique").on(table.phoneNumberDigits),
-  usersPhoneE164Unique: uniqueIndex("users_phone_e164_unique").on(table.phoneNumberE164),
-  usersEmailUnique: uniqueIndex("users_email_unique").on(table.email),
-  usersEmailNormalizedUnique: uniqueIndex("users_email_normalized_unique").on(table.emailNormalized),
-  usersGoogleIdUnique: uniqueIndex("users_google_id_unique").on(table.googleId),
-  usersPasswordResetTokenUnique: uniqueIndex("users_password_reset_token_unique").on(table.passwordResetToken),
-  usersEmailVerificationTokenUnique: uniqueIndex("users_email_verification_token_unique").on(table.emailVerificationToken),
-  usersPhoneDigitsIdx: index("users_phone_digits_idx").on(table.phoneNumberDigits),
-  usersEmailNormalizedIdx: index("users_email_normalized_idx").on(table.emailNormalized),
-  usersGoogleIdIdx: index("users_google_id_idx").on(table.googleId),
-  usersPasswordResetTokenIdx: index("users_password_reset_token_idx").on(table.passwordResetToken),
-  usersEmailVerificationTokenIdx: index("users_email_verification_token_idx").on(table.emailVerificationToken),
-}));
+});
 
 export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;

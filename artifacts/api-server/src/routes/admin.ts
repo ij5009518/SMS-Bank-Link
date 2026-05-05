@@ -1,65 +1,35 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { usersTable, accountsTable, smsLogsTable } from "@workspace/db/schema";
-import { count, sql } from "drizzle-orm";
-import { requireAdmin } from "../middleware/auth.js";
-import {
-  createAdminSessionTokens,
-  revokeAdminRefreshToken,
-  rotateAdminRefreshToken,
-  verifyAdminPassword,
-} from "../lib/admin-auth.js";
-import { authenticateToken, requireRole } from "../middleware/auth.js";
+import { eq, count, sql } from "drizzle-orm";
+import { createHash } from "crypto";
 
 const router: IRouter = Router();
 
-router.post("/login", async (req, res) => {
-  const { password } = req.body as { password?: string };
-  if (!password) {
-    return res.status(400).json({ error: "bad_request", message: "Password is required." });
-  }
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "textbanks-admin-2025";
+// Simple signed token: sha256(password + secret)
+const ADMIN_SECRET = process.env.ADMIN_SECRET || "tb_admin_secret_key";
+function makeToken(password: string) {
+  return createHash("sha256").update(password + ADMIN_SECRET).digest("hex");
+}
+const VALID_TOKEN = makeToken(ADMIN_PASSWORD);
 
-  const valid = await verifyAdminPassword(password);
-  if (!valid) {
+router.post("/login", (req, res) => {
+  const { password } = req.body as { password?: string };
+  if (!password) return res.status(400).json({ error: "bad_request", message: "Password is required." });
+  if (password !== ADMIN_PASSWORD) {
     return res.status(401).json({ error: "unauthorized", message: "Incorrect admin password." });
   }
-
-  res.json(createAdminSessionTokens());
-  return;
+  res.json({ token: VALID_TOKEN });
 });
 
-router.post("/refresh", (req, res) => {
-  const { refreshToken } = req.body as { refreshToken?: string };
-  if (!refreshToken) {
-    return res.status(400).json({ error: "bad_request", message: "Refresh token is required." });
+router.post("/verify-token", (req, res) => {
+  const { token } = req.body as { token?: string };
+  if (!token || token !== VALID_TOKEN) {
+    return res.status(401).json({ error: "unauthorized", message: "Invalid or expired session." });
   }
-
-  const rotated = rotateAdminRefreshToken(refreshToken);
-  if (!rotated) {
-    return res.status(401).json({ error: "unauthorized", message: "Invalid or expired refresh token." });
-  }
-
-  res.json(rotated);
-  return;
+  res.json({ valid: true });
 });
-
-router.use(requireAdmin);
-
-router.post("/logout", (req, res) => {
-  const { refreshToken } = req.body as { refreshToken?: string };
-  if (refreshToken) {
-    revokeAdminRefreshToken(refreshToken);
-  }
-  res.status(204).send();
-  return;
-});
-
-router.get("/verify-token", authenticateToken, requireRole("admin"), (req, res) => {
-  res.json({ valid: true, exp: req.auth?.exp });
-  return;
-});
-
-router.use(authenticateToken, requireRole("admin"));
 
 router.get("/stats", async (_req, res) => {
   const [userStats] = await db.select({
@@ -87,7 +57,6 @@ router.get("/stats", async (_req, res) => {
     totalAccountsLinked: Number(accountStats.totalAccountsLinked),
     totalSmsToday: Number(smsStats.totalSmsToday),
   });
-  return;
 });
 
 export default router;

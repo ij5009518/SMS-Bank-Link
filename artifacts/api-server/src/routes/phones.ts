@@ -1,9 +1,9 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { usersTable, phoneNumbersTable } from "@workspace/db/schema";
-import { eq, and, ne } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+import { randomBytes } from "crypto";
 import { sendSms, normalizeE164 } from "../lib/signalwire.js";
-import { normalizePhoneForStorage } from "../lib/phone-normalization.js";
 
 const router: IRouter = Router({ mergeParams: true });
 
@@ -35,30 +35,30 @@ router.post("/", async (req, res) => {
     return res.status(403).json({ error: "plan_required", message: "Multiple phone numbers require a Premium plan." });
   }
 
-  const normalizedPhoneData = normalizePhoneForStorage(phoneNumber);
-  if (!normalizedPhoneData.canonicalDigits) {
+  const normalized = phoneNumber.replace(/\D/g, "");
+  if (normalized.length < 10) {
     return res.status(400).json({ error: "bad_phone", message: "Please enter a valid phone number." });
   }
-  const normalized = normalizedPhoneData.digits;
 
   // Can't add the primary number again
-  if (normalizedPhoneData.canonicalDigits === user.phoneNumberDigits) {
+  const primaryDigits = user.phoneNumber.replace(/\D/g, "").replace(/^1/, "");
+  if (normalized.replace(/^1/, "") === primaryDigits) {
     return res.status(409).json({ error: "duplicate_phone", message: "That is already your primary phone number." });
   }
 
   // Check not already on this account
   const existing = await db.select().from(phoneNumbersTable).where(
-    and(eq(phoneNumbersTable.userId, userId), eq(phoneNumbersTable.phoneNumberDigits, normalizedPhoneData.canonicalDigits))
+    and(eq(phoneNumbersTable.userId, userId), eq(phoneNumbersTable.phoneNumber, normalized))
   );
   if (existing.length > 0) {
     return res.status(409).json({ error: "duplicate_phone", message: "That number is already linked to this account." });
   }
 
   // Check not on another account (primary)
-  const [conflict] = await db.select().from(usersTable).where(and(
-    eq(usersTable.phoneNumberDigits, normalizedPhoneData.canonicalDigits),
-    ne(usersTable.id, userId),
-  ));
+  const allUsers = await db.select().from(usersTable);
+  const conflict = allUsers.find((u) =>
+    u.id !== userId && u.phoneNumber.replace(/\D/g, "").replace(/^1/, "") === normalized.replace(/^1/, "")
+  );
   if (conflict) {
     return res.status(409).json({ error: "duplicate_phone", message: "That number is already linked to another Text Banks account." });
   }
@@ -69,8 +69,6 @@ router.post("/", async (req, res) => {
   const [created] = await db.insert(phoneNumbersTable).values({
     userId,
     phoneNumber: normalized,
-    phoneNumberDigits: normalizedPhoneData.canonicalDigits,
-    phoneNumberE164: normalizedPhoneData.e164,
     label: label?.trim() || null,
     verified: false,
     verificationCode: code,

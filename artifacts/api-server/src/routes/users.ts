@@ -6,7 +6,6 @@ import { eq, desc, max } from "drizzle-orm";
 import { hashPassword } from "./auth";
 import { sendSms, normalizeE164 } from "../lib/signalwire.js";
 import { sendWelcomeEmail } from "../lib/email.js";
-import { normalizePhoneForStorage } from "../lib/phone-normalization.js";
 
 function generateVerificationCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -23,21 +22,14 @@ router.post("/register", async (req, res) => {
       ? await hashPassword(rawPassword)
       : undefined;
 
-    const normalizedPhoneData = normalizePhoneForStorage(body.phoneNumber);
-    if (!normalizedPhoneData.canonicalDigits) {
-      return res.status(400).json({ error: "bad_request", message: "Please enter a valid phone number." });
-    }
-    const normalizedPhone = normalizedPhoneData.digits;
+    const normalizedPhone = body.phoneNumber.replace(/\D/g, "");
     const normalizedEmail = rawEmail?.trim().toLowerCase() || null;
     const verificationCode = generateVerificationCode();
     const verificationExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
     const [user] = await db.insert(usersTable).values({
       phoneNumber: normalizedPhone,
-      phoneNumberDigits: normalizedPhoneData.canonicalDigits,
-      phoneNumberE164: normalizedPhoneData.e164,
       email: normalizedEmail,
-      emailNormalized: normalizedEmail,
       firstName: body.firstName,
       lastName: body.lastName,
       passwordHash,
