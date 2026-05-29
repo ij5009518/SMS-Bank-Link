@@ -57,6 +57,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { clearUserToken, getUserToken } from "@/lib/auth-fetch";
 import { useToast } from "@/hooks/use-toast";
 import { formatPhone } from "@/lib/utils";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 const SESSION_KEY = "textbank_session";
 
@@ -696,7 +697,13 @@ export default function MyAccountPage() {
   const handleRemoveLinkedPhone = async (phoneId: number) => {
     if (!session) return;
     const target = linkedPhones.find((p) => p.id === phoneId);
-    if (!confirm(`Remove ${target?.phoneNumber ?? "this number"}? It will no longer be able to text Text Banks.`)) return;
+    const ok = await confirm({
+      title: "Remove linked number?",
+      description: `${formatPhone(target?.phoneNumber) || "This number"} will no longer be able to text Text Banks.`,
+      confirmText: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/users/${session.id}/phones/${phoneId}`, { method: "DELETE" });
       if (res.ok) {
@@ -784,6 +791,7 @@ export default function MyAccountPage() {
   // ── Teller Connect (inline bank linking) ──
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [tellerScriptLoaded, setTellerScriptLoaded] = useState(false);
   const [bankLinkError, setBankLinkError] = useState<string | null>(null);
   const [bankLinkSuccess, setBankLinkSuccess] = useState<string | null>(null);
@@ -1685,7 +1693,14 @@ export default function MyAccountPage() {
                                     {!cat.isSystem && (
                                       <button className="p-1.5 hover:bg-red-50 rounded-lg text-[#9A9AA8] hover:text-red-500 transition-colors"
                                         onClick={async () => {
-                                          if (!session || !confirm(`Delete "${cat.name}"? This can't be undone.`)) return;
+                                          if (!session) return;
+                                          const ok = await confirm({
+                                            title: "Delete category?",
+                                            description: `"${cat.name}" will be removed. This can't be undone.`,
+                                            confirmText: "Delete",
+                                            destructive: true,
+                                          });
+                                          if (!ok) return;
                                           try {
                                             const res = await fetch(`/api/users/${session.id}/categories/${cat.id}`, { method: "DELETE" });
                                             if (res.ok) {
@@ -2698,6 +2713,7 @@ export default function MyAccountPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      {confirmDialog}
     </PublicLayout>
   );
 }
