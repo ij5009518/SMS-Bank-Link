@@ -55,6 +55,7 @@ import { TextBanksLogo } from "@/components/layout/Logo";
 import { useGetUserTransactions, useGetSmsLogs, useGetUser, useTellerEnroll, useGetTellerConfig, getGetUserQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { clearUserToken, getUserToken } from "@/lib/auth-fetch";
+import { useToast } from "@/hooks/use-toast";
 
 declare global {
   interface Window {
@@ -706,10 +707,19 @@ export default function MyAccountPage() {
 
   const handleRemoveLinkedPhone = async (phoneId: number) => {
     if (!session) return;
+    const target = linkedPhones.find((p) => p.id === phoneId);
+    if (!confirm(`Remove ${target?.phoneNumber ?? "this number"}? It will no longer be able to text Text Banks.`)) return;
     try {
       const res = await fetch(`/api/users/${session.id}/phones/${phoneId}`, { method: "DELETE" });
-      if (res.ok) setLinkedPhones((prev) => prev.filter((p) => p.id !== phoneId));
-    } catch { /* noop */ }
+      if (res.ok) {
+        setLinkedPhones((prev) => prev.filter((p) => p.id !== phoneId));
+        toast({ title: "Number removed", description: "The linked phone number was removed." });
+      } else {
+        toast({ variant: "destructive", title: "Couldn't remove number", description: "Please try again." });
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Network error", description: "Please check your connection and try again." });
+    }
   };
 
   // ── Phone Management ──
@@ -785,6 +795,7 @@ export default function MyAccountPage() {
 
   // ── Teller Connect (inline bank linking) ──
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [tellerScriptLoaded, setTellerScriptLoaded] = useState(false);
   const [bankLinkError, setBankLinkError] = useState<string | null>(null);
   const [bankLinkSuccess, setBankLinkSuccess] = useState<string | null>(null);
@@ -814,7 +825,7 @@ export default function MyAccountPage() {
         setBankLinkError(null);
         try {
           const result = await tellerEnrollMutation.mutateAsync({
-            body: {
+            data: {
               userId: session.id,
               accessToken: enrollment.accessToken,
               enrollmentId: enrollment.enrollment.id,
@@ -1686,8 +1697,17 @@ export default function MyAccountPage() {
                                     {!cat.isSystem && (
                                       <button className="p-1.5 hover:bg-red-50 rounded-lg text-[#9A9AA8] hover:text-red-500 transition-colors"
                                         onClick={async () => {
-                                          if (!session || !confirm(`Delete "${cat.name}"?`)) return;
-                                          await fetch(`/api/users/${session.id}/categories/${cat.id}`, { method: "DELETE" });
+                                          if (!session || !confirm(`Delete "${cat.name}"? This can't be undone.`)) return;
+                                          try {
+                                            const res = await fetch(`/api/users/${session.id}/categories/${cat.id}`, { method: "DELETE" });
+                                            if (res.ok) {
+                                              toast({ title: "Category deleted", description: `"${cat.name}" was removed.` });
+                                            } else {
+                                              toast({ variant: "destructive", title: "Couldn't delete", description: "Please try again." });
+                                            }
+                                          } catch {
+                                            toast({ variant: "destructive", title: "Network error", description: "Please try again." });
+                                          }
                                           fetchCategories();
                                         }}>
                                         <Trash2 className="w-3.5 h-3.5" />
