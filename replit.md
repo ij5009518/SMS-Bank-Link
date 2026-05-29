@@ -99,6 +99,35 @@ All routes at `/api`:
 - `GET /settings/alerts` — alert settings
 - `PUT /settings/alerts` — update alert settings
 
+## Security Model
+
+- **Token auth** — clients receive a signed, expiring `sessionToken` from auth
+  endpoints (login, signup, verify, Google, register) and send it as
+  `Authorization: Bearer <token>`. A global fetch interceptor on the frontend
+  attaches it automatically.
+- **Authorization** — `requireAuth`/`requireSelf`/`requireAdmin` middleware
+  guard all per-user and admin routes; a user can only access their own data.
+- **Admin** — `/admin/login` issues a short-lived signed admin token; admin data
+  routes require it.
+- **SMS webhook** — inbound `/api/sms/webhook` requests are signature-verified
+  against the SignalWire auth token.
+- **Secrets at rest** — Teller bank access tokens are encrypted (AES-256-GCM).
+- **Rate limiting** — credential, OTP, and code-sending endpoints are throttled
+  per IP.
+
+### Environment Variables
+
+Security-relevant configuration (set these in any non-local environment):
+
+- `AUTH_SECRET` — **required**; HMAC key for signing session/admin tokens.
+- `ADMIN_PASSWORD` — **required** to enable the admin dashboard (no default).
+- `TELLER_ENCRYPTION_KEY` — key for encrypting bank access tokens at rest
+  (falls back to `AUTH_SECRET` if unset).
+- `SIGNALWIRE_TOKEN` — also used to validate inbound SMS webhook signatures.
+- `PUBLIC_WEBHOOK_URL` — public URL SignalWire posts to (used for signature
+  validation behind proxies; otherwise reconstructed from request headers).
+- `CORS_ORIGIN` — optional comma-separated allowlist of origins.
+
 ## Key Design Decisions
 
 - **Read-only throughout** — no payments, transfers, or money movement

@@ -1,4 +1,5 @@
 import { RestClient } from "@signalwire/compatibility-api";
+import { createHmac, timingSafeEqual } from "crypto";
 
 const PROJECT_ID = process.env.SIGNALWIRE_PROJECT_ID;
 const TOKEN = process.env.SIGNALWIRE_TOKEN;
@@ -63,4 +64,33 @@ export function normalizeE164(phone: string): string | null {
 
 export function isConfigured(): boolean {
   return !!(PROJECT_ID && TOKEN && SPACE_URL && FROM_NUMBER);
+}
+
+/**
+ * Validates an inbound SignalWire/Twilio-compatible webhook signature.
+ * The expected signature is base64(HMAC-SHA1(authToken, fullUrl + sortedParams)).
+ *
+ * If no auth token is configured (local/demo), validation is skipped with a
+ * warning so development isn't blocked — production must set SIGNALWIRE_TOKEN.
+ */
+export function validateWebhookSignature(opts: {
+  signature: string | undefined;
+  url: string;
+  params: Record<string, unknown>;
+}): boolean {
+  if (!TOKEN) {
+    console.warn("[SignalWire] No auth token configured — skipping webhook signature validation");
+    return true;
+  }
+  if (!opts.signature) return false;
+
+  let data = opts.url;
+  for (const key of Object.keys(opts.params).sort()) {
+    data += key + String(opts.params[key] ?? "");
+  }
+
+  const expected = createHmac("sha1", TOKEN).update(Buffer.from(data, "utf8")).digest("base64");
+  const provided = Buffer.from(opts.signature);
+  const expectedBuf = Buffer.from(expected);
+  return provided.length === expectedBuf.length && timingSafeEqual(provided, expectedBuf);
 }

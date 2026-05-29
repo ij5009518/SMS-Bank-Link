@@ -2,11 +2,12 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { transactionsTable } from "@workspace/db/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { requireAuth, requireSelf } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
-router.get("/:userId", async (req, res) => {
-  const userId = parseInt(req.params.userId);
+router.get("/:userId", requireAuth, requireSelf(), async (req, res) => {
+  const userId = parseInt(String(req.params.userId), 10);
   if (isNaN(userId)) {
     return res.status(400).json({ error: "bad_request", message: "Invalid user ID" });
   }

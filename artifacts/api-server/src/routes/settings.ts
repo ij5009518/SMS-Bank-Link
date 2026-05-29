@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { alertSettingsTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 import { UpdateAlertSettingsBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -45,6 +46,7 @@ router.put("/alerts", async (req, res) => {
         lowBalanceThreshold: String(body.lowBalanceThreshold),
         largeTransactionThreshold: String(body.largeTransactionThreshold),
       })
+      .where(eq(alertSettingsTable.id, settings.id))
       .returning();
 
     res.json({

@@ -6,23 +6,25 @@ import { eq, desc, max } from "drizzle-orm";
 import { hashPassword } from "./auth";
 import { sendSms, normalizeE164 } from "../lib/signalwire.js";
 import { sendWelcomeEmail } from "../lib/email.js";
-
-function generateVerificationCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
+import { generateVerificationCode } from "../lib/codes.js";
+import { sanitizeUser } from "../lib/sanitize.js";
+import { signUserToken } from "../lib/tokens.js";
+import { requireAuth, requireSelf, requireAdmin, getAuth } from "../middlewares/auth";
+import { rateLimit } from "../middlewares/rate-limit";
+import { normalizePhone } from "@workspace/db/phone";
 
 const router: IRouter = Router();
 
-router.post("/register", async (req, res) => {
+router.post("/register", rateLimit({ windowMs: 15 * 60 * 1000, max: 15, keyPrefix: "register" }), async (req, res) => {
   try {
     const body = RegisterUserBody.parse(req.body);
     const rawPassword = (req.body as Record<string, unknown>).password as string | undefined;
     const rawEmail = (req.body as Record<string, unknown>).email as string | undefined;
-    const passwordHash = rawPassword && rawPassword.length >= 6
+    const passwordHash = rawPassword && rawPassword.length >= 8
       ? await hashPassword(rawPassword)
       : undefined;
 
-    const normalizedPhone = body.phoneNumber.replace(/\D/g, "");
+    const normalizedPhone = normalizePhone(body.phoneNumber);
     const normalizedEmail = rawEmail?.trim().toLowerCase() || null;
     const verificationCode = generateVerificationCode();
     const verificationExpiry = new Date(Date.now() + 10 * 60 * 1000);
@@ -55,8 +57,9 @@ router.post("/register", async (req, res) => {
         .catch((err) => console.error("[Register] Email send failed:", err instanceof Error ? err.message : err));
     }
 
-    const { phoneVerificationCode: _vc, ...safeUser } = user as typeof user & { phoneVerificationCode?: string };
-    res.status(201).json(safeUser);
+    // Issue a session token so the freshly-registered user can complete
+    // onboarding (e.g. linking a bank via Teller) against authenticated routes.
+    res.status(201).json({ ...sanitizeUser(user), sessionToken: signUserToken(user.id) });
   } catch (e: unknown) {
     const err = e as Record<string, unknown>;
     const causeErr = err?.cause as Record<string, unknown> | undefined;
@@ -77,7 +80,7 @@ router.post("/register", async (req, res) => {
   }
 });
 
-router.get("/", async (_req, res) => {
+router.get("/", requireAdmin, async (_req, res) => {
   const users = await db.select().from(usersTable).orderBy(desc(usersTable.createdAt));
 
   const lastSmsSubquery = await db
@@ -95,7 +98,7 @@ router.get("/", async (_req, res) => {
   }
 
   const result = users.map((u) => ({
-    ...u,
+    ...sanitizeUser(u),
     accounts: (accountsMap.get(u.id) || []).map((a) => ({
       ...a,
       currentBalance: Number(a.currentBalance),
@@ -106,8 +109,8 @@ router.get("/", async (_req, res) => {
   res.json(result);
 });
 
-router.patch("/:userId", async (req, res) => {
-  const userId = parseInt(req.params.userId);
+router.patch("/:userId", requireAuth, requireSelf(), async (req, res) => {
+  const userId = parseInt(String(req.params.userId), 10);
   if (isNaN(userId)) {
     return res.status(400).json({ error: "bad_request", message: "Invalid user ID" });
   }
@@ -120,12 +123,15 @@ router.patch("/:userId", async (req, res) => {
     plan?: string;
   };
 
+  const isAdmin = getAuth(req)?.role === "admin";
+
   const updates: Record<string, unknown> = {};
   if (firstName !== undefined) updates.firstName = firstName.trim().replace(/\b\w/g, (c: string) => c.toUpperCase());
   if (lastName !== undefined) updates.lastName = lastName.trim().replace(/\b\w/g, (c: string) => c.toUpperCase());
   if (optedOut !== undefined) updates.optedOut = optedOut;
   if (onboardingStatus !== undefined) updates.onboardingStatus = onboardingStatus;
-  if (plan !== undefined && (plan === "basic" || plan === "pro" || plan === "premium")) updates.plan = plan;
+  // Plan (billing tier) can only be changed by an admin — never self-serve.
+  if (isAdmin && plan !== undefined && (plan === "basic" || plan === "pro" || plan === "premium")) updates.plan = plan;
 
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: "bad_request", message: "No fields to update" });
@@ -135,16 +141,15 @@ router.patch("/:userId", async (req, res) => {
     const [updated] = await db.update(usersTable).set(updates).where(eq(usersTable.id, userId)).returning();
     if (!updated) return res.status(404).json({ error: "not_found", message: "User not found" });
     const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, userId));
-    const { passwordHash: _pw, ...safe } = updated as typeof updated & { passwordHash?: string };
-    res.json({ ...safe, accounts: accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) })) });
+    res.json({ ...sanitizeUser(updated), accounts: accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) })) });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Update failed";
     res.status(400).json({ error: "bad_request", message });
   }
 });
 
-router.get("/:userId", async (req, res) => {
-  const userId = parseInt(req.params.userId);
+router.get("/:userId", requireAuth, requireSelf(), async (req, res) => {
+  const userId = parseInt(String(req.params.userId), 10);
   if (isNaN(userId)) {
     return res.status(400).json({ error: "bad_request", message: "Invalid user ID" });
   }
@@ -161,7 +166,7 @@ router.get("/:userId", async (req, res) => {
     .where(eq(smsLogsTable.userId, userId));
 
   const result = {
-    ...user,
+    ...sanitizeUser(user),
     accounts: accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) })),
     lastSmsAt: lastSmsRow?.lastSmsAt || null,
   };

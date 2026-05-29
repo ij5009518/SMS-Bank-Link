@@ -15,6 +15,7 @@ import {
   AlertSettings
 } from "@workspace/api-client-react";
 
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -307,7 +308,7 @@ function TabUsers() {
           {users.map(user => (
             <TableRow key={user.id}>
               <TableCell className="font-medium">{user.firstName} {user.lastName}</TableCell>
-              <TableCell>{user.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1-****-$2')}</TableCell>
+              <TableCell>{user.phoneNumber.replace(/(\d{3})\d{3}(\d{4})/, '($1) ***-$2')}</TableCell>
               <TableCell>
                 <Badge variant={user.onboardingStatus === 'active' ? 'default' : 'secondary'} className="capitalize">
                   {user.onboardingStatus.replace('_', ' ')}
@@ -400,7 +401,7 @@ function TabLogs() {
               <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                 {format(new Date(log.createdAt), "MMM d, HH:mm:ss")}
               </TableCell>
-              <TableCell className="font-mono text-sm">{log.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1-****-$2')}</TableCell>
+              <TableCell className="font-mono text-sm">{log.phoneNumber.replace(/(\d{3})\d{3}(\d{4})/, '($1) ***-$2')}</TableCell>
               <TableCell className="max-w-md truncate">{log.message}</TableCell>
               <TableCell>
                 <Badge variant="secondary" className={`text-xs ${log.status === 'failed' ? 'bg-red-100 text-red-700' : ''}`}>
@@ -424,16 +425,23 @@ function TabSettings() {
   const { data: settings, isLoading } = useGetAlertSettings();
   const updateMutation = useUpdateAlertSettings();
   const [localSettings, setLocalSettings] = useState<AlertSettings | null>(null);
+  const { toast } = useToast();
+
+  // Seed the editable copy once settings load (avoids setState-during-render).
+  useEffect(() => {
+    if (settings && !localSettings) setLocalSettings(settings);
+  }, [settings, localSettings]);
 
   if (isLoading) return <div className="p-8 text-center text-muted-foreground animate-pulse">Loading settings...</div>;
-  
-  if (!localSettings && settings) {
-    setLocalSettings(settings);
-  }
 
   const handleSave = async () => {
     if (!localSettings) return;
-    await updateMutation.mutateAsync({ data: localSettings });
+    try {
+      await updateMutation.mutateAsync({ data: localSettings });
+      toast({ title: "Settings saved", description: "Alert configuration updated successfully." });
+    } catch {
+      toast({ variant: "destructive", title: "Save failed", description: "Could not update settings. Please try again." });
+    }
   };
 
   if (!localSettings) return null;

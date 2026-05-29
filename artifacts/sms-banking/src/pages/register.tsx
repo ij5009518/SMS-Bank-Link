@@ -39,27 +39,12 @@ import { PublicLayout } from "@/components/layout/PublicLayout";
 import { TextBanksLogo } from "@/components/layout/Logo";
 import { useRegisterUser, useGetTellerConfig, useTellerEnroll } from "@workspace/api-client-react";
 
-declare global {
-  interface Window {
-    TellerConnect?: {
-      setup: (opts: {
-        applicationId: string;
-        environment?: string;
-        products?: string[];
-        onSuccess: (enrollment: { accessToken: string; enrollment: { id: string; institution: { name: string } } }) => void;
-        onExit?: () => void;
-        onFailure?: (e: unknown) => void;
-      }) => { open: () => void };
-    };
-  }
-}
-
 const schema = z.object({
   firstName: z.string().min(2, "First name is required"),
   lastName: z.string().min(2, "Last name is required"),
   email: z.string().email("Please enter a valid email address"),
   phoneNumber: z.string().min(10, "Valid phone number is required"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
   confirmPassword: z.string().min(1, "Please confirm your password"),
   smsConsent: z.boolean().refine((v) => v === true, { message: "You must consent to receive SMS messages" }),
 }).refine((d) => d.password === d.confirmPassword, {

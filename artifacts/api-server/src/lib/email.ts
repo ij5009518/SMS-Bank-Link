@@ -204,6 +204,49 @@ export async function sendPasswordResetEmail(to: string, firstName: string, rese
   }
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Sends a contact-form / bug-report submission to the admin inbox. */
+export async function sendContactNotification(
+  adminEmail: string,
+  payload: { name: string; email?: string; subject?: string; message: string; type?: string },
+): Promise<boolean> {
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+    const type = payload.type || "contact";
+    const subject = payload.subject?.trim() || "(no subject)";
+    const replyTo = payload.email?.trim();
+
+    const { error } = await client.emails.send({
+      from: fromEmail,
+      to: adminEmail,
+      ...(replyTo ? { replyTo } : {}),
+      subject: `[Text Banks ${type}] ${subject}`,
+      html: `<!DOCTYPE html><html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0f172a;">
+        <h2 style="margin:0 0 12px;">New ${escapeHtml(type)} submission</h2>
+        <p style="margin:4px 0;"><strong>Name:</strong> ${escapeHtml(payload.name)}</p>
+        <p style="margin:4px 0;"><strong>Email:</strong> ${escapeHtml(replyTo || "(not provided)")}</p>
+        <p style="margin:4px 0;"><strong>Subject:</strong> ${escapeHtml(subject)}</p>
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0;"/>
+        <p style="white-space:pre-wrap;font-size:14px;line-height:1.6;">${escapeHtml(payload.message)}</p>
+      </body></html>`,
+    });
+
+    if (error) { console.error("[Email] Resend error (contact):", error); return false; }
+    console.log(`[Email] Contact notification sent to ${adminEmail}`);
+    return true;
+  } catch (err) {
+    console.warn("[Email] Could not send contact notification:", err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
 export async function isEmailConfigured(): Promise<boolean> {
   try {
     await getCredentials();

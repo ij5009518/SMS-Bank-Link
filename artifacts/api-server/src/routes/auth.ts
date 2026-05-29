@@ -7,9 +7,19 @@ import { promisify } from "util";
 import { sendSms, normalizeE164 } from "../lib/signalwire.js";
 import { sendWelcomeEmail, sendEmailVerificationEmail, sendDeviceVerificationEmail, sendPasswordResetEmail } from "../lib/email.js";
 import { OAuth2Client } from "google-auth-library";
+import { sanitizeUser } from "../lib/sanitize.js";
+import { signUserToken } from "../lib/tokens.js";
+import { generateVerificationCode } from "../lib/codes.js";
+import { rateLimit } from "../middlewares/rate-limit";
+import { normalizePhone } from "@workspace/db/phone";
 
 const scryptAsync = promisify(scrypt);
 const router: IRouter = Router();
+
+// Throttle credential and code-sending endpoints to blunt brute-force and
+// SMS/email flooding. Buckets are keyed per IP + path.
+const credentialLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 12, keyPrefix: "auth" });
+const codeSendLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, keyPrefix: "auth-send" });
 
 function capitalizeName(name: string): string {
   return name.trim().replace(/\b\w/g, (c) => c.toUpperCase());
@@ -23,21 +33,17 @@ async function hashPassword(password: string): Promise<string> {
 
 async function verifyPassword(password: string, hash: string): Promise<boolean> {
   const [salt, storedKey] = hash.split(":");
+  if (!salt || !storedKey) return false;
   const derivedKey = await scryptAsync(password, salt, 64) as Buffer;
   const storedKeyBuf = Buffer.from(storedKey, "hex");
+  // timingSafeEqual throws on length mismatch — guard so a malformed stored
+  // hash results in a failed login rather than a 500.
+  if (derivedKey.length !== storedKeyBuf.length) return false;
   return timingSafeEqual(derivedKey, storedKeyBuf);
 }
 
 function safeUser(user: typeof usersTable.$inferSelect, accounts: Array<Record<string, unknown>>) {
-  const { passwordHash: _pw, phoneVerificationCode: _vc, ...rest } = user as typeof user & {
-    passwordHash?: string;
-    phoneVerificationCode?: string;
-  };
-  return { ...rest, accounts };
-}
-
-function generateVerificationCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return { ...sanitizeUser(user as Record<string, unknown>), accounts };
 }
 
 function maskEmail(email: string): string {
@@ -47,7 +53,7 @@ function maskEmail(email: string): string {
   return `${visible}${"*".repeat(Math.max(local.length - 2, 2))}@${domain}`;
 }
 
-router.post("/login", async (req, res) => {
+router.post("/login", credentialLimiter, async (req, res) => {
   const { phoneNumber, password, deviceToken } = req.body as {
     phoneNumber?: string;
     password?: string;
@@ -58,21 +64,20 @@ router.post("/login", async (req, res) => {
     return res.status(400).json({ error: "bad_request", message: "Phone number and password are required." });
   }
 
-  const normalized = phoneNumber.replace(/\D/g, "");
-  const allUsers = await db.select().from(usersTable);
-  const user = allUsers.find((u) => u.phoneNumber.replace(/\D/g, "") === normalized);
+  const normalized = normalizePhone(phoneNumber);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.phoneNumber, normalized));
 
-  if (!user) {
-    return res.status(401).json({ error: "invalid_credentials", message: "No account found for that phone number." });
-  }
+  // Use a single generic error for "no such account" and "wrong password" so
+  // the endpoint can't be used to enumerate which phone numbers are registered.
+  const INVALID = { error: "invalid_credentials", message: "Incorrect phone number or password." };
 
-  if (!user.passwordHash) {
-    return res.status(401).json({ error: "no_password", message: "This account was registered without a password. Please use the register page to set one up." });
+  if (!user || !user.passwordHash) {
+    return res.status(401).json(INVALID);
   }
 
   const valid = await verifyPassword(password, user.passwordHash);
   if (!valid) {
-    return res.status(401).json({ error: "invalid_credentials", message: "Incorrect password." });
+    return res.status(401).json(INVALID);
   }
 
   // Check if device is trusted
@@ -87,7 +92,7 @@ router.post("/login", async (req, res) => {
     if (trusted) {
       // Known device — log in immediately
       const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, user.id));
-      return res.json({ ...safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))), deviceVerified: true });
+      return res.json({ ...safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))), deviceVerified: true, sessionToken: signUserToken(user.id) });
     }
   }
 
@@ -101,7 +106,7 @@ router.post("/login", async (req, res) => {
   });
 });
 
-router.post("/signup", async (req, res) => {
+router.post("/signup", credentialLimiter, async (req, res) => {
   const { firstName, lastName, phoneNumber, email, password, smsConsent } = req.body as {
     firstName?: string;
     lastName?: string;
@@ -114,11 +119,11 @@ router.post("/signup", async (req, res) => {
   if (!firstName || !lastName || !phoneNumber || !password) {
     return res.status(400).json({ error: "bad_request", message: "All fields are required." });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: "bad_request", message: "Password must be at least 6 characters." });
+  if (password.length < 8) {
+    return res.status(400).json({ error: "bad_request", message: "Password must be at least 8 characters." });
   }
 
-  const normalizedPhone = phoneNumber.replace(/\D/g, "");
+  const normalizedPhone = normalizePhone(phoneNumber);
   const normalizedEmail = email?.trim().toLowerCase() || null;
   const passwordHash = await hashPassword(password);
   const verificationCode = generateVerificationCode();
@@ -158,7 +163,7 @@ router.post("/signup", async (req, res) => {
         .catch((err) => console.error("[Auth] Failed to send welcome email:", err instanceof Error ? err.message : err));
     }
 
-    res.status(201).json(safeUser(user, []));
+    res.status(201).json({ ...safeUser(user, []), sessionToken: signUserToken(user.id) });
   } catch (e: unknown) {
     const err = e as Record<string, unknown>;
     const causeErr = err?.cause as Record<string, unknown> | undefined;
@@ -175,7 +180,7 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-router.post("/verify-phone", async (req, res) => {
+router.post("/verify-phone", credentialLimiter, async (req, res) => {
   const { userId, code } = req.body as { userId?: number; code?: string };
 
   if (!userId || !code) {
@@ -209,10 +214,10 @@ router.post("/verify-phone", async (req, res) => {
     .returning();
 
   const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, userId));
-  res.json({ success: true, user: safeUser(updated, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+  res.json({ success: true, user: safeUser(updated, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))), sessionToken: signUserToken(updated.id) });
 });
 
-router.post("/resend-verification", async (req, res) => {
+router.post("/resend-verification", codeSendLimiter, async (req, res) => {
   const { userId } = req.body as { userId?: number };
 
   if (!userId) {
@@ -269,7 +274,7 @@ router.post("/verify-email", async (req, res) => {
   res.json({ success: true, user: safeUser(updated, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
 });
 
-router.post("/resend-email-verification", async (req, res) => {
+router.post("/resend-email-verification", codeSendLimiter, async (req, res) => {
   const { userId } = req.body as { userId?: number };
   if (!userId) return res.status(400).json({ error: "bad_request", message: "User ID is required." });
 
@@ -297,7 +302,7 @@ router.post("/resend-email-verification", async (req, res) => {
 // ── Device Verification ──
 
 // Step 1 — send a code to the user's email to verify this device
-router.post("/send-device-code", async (req, res) => {
+router.post("/send-device-code", codeSendLimiter, async (req, res) => {
   const { userId } = req.body as { userId?: number };
   if (!userId) return res.status(400).json({ error: "bad_request", message: "User ID is required." });
 
@@ -341,7 +346,7 @@ router.post("/send-device-code", async (req, res) => {
 });
 
 // Step 2 — verify the code and register this device as trusted
-router.post("/verify-device", async (req, res) => {
+router.post("/verify-device", credentialLimiter, async (req, res) => {
   const { userId, code, deviceName } = req.body as { userId?: number; code?: string; deviceName?: string };
   if (!userId || !code) return res.status(400).json({ error: "bad_request", message: "User ID and code are required." });
 
@@ -377,11 +382,11 @@ router.post("/verify-device", async (req, res) => {
   const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, userId));
   const safeU = safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) })));
 
-  res.json({ success: true, deviceToken, user: safeU });
+  res.json({ success: true, deviceToken, user: safeU, sessionToken: signUserToken(userId) });
 });
 
 // Re-verify current phone (works even if already verified — resets to unverified)
-router.post("/reverify-phone", async (req, res) => {
+router.post("/reverify-phone", codeSendLimiter, async (req, res) => {
   const { userId } = req.body as { userId?: number };
 
   if (!userId) {
@@ -415,7 +420,7 @@ router.post("/reverify-phone", async (req, res) => {
 });
 
 // Request a phone number change — sends OTP to the NEW number
-router.post("/request-phone-change", async (req, res) => {
+router.post("/request-phone-change", codeSendLimiter, async (req, res) => {
   const { userId, newPhoneNumber } = req.body as { userId?: number; newPhoneNumber?: string };
 
   if (!userId || !newPhoneNumber) {
@@ -427,17 +432,14 @@ router.post("/request-phone-change", async (req, res) => {
     return res.status(404).json({ error: "not_found", message: "User not found." });
   }
 
-  const normalizedNew = newPhoneNumber.replace(/\D/g, "");
+  const normalizedNew = normalizePhone(newPhoneNumber);
   if (normalizedNew.length < 10) {
     return res.status(400).json({ error: "bad_phone", message: "Please enter a valid phone number." });
   }
 
-  // Make sure it's not already taken by another account
-  const allUsers = await db.select().from(usersTable);
-  const conflict = allUsers.find((u) =>
-    u.id !== userId && u.phoneNumber.replace(/\D/g, "").replace(/^1/, "") === normalizedNew.replace(/^1/, "")
-  );
-  if (conflict) {
+  // Make sure it's not already taken by another account (indexed lookup).
+  const [conflict] = await db.select().from(usersTable).where(eq(usersTable.phoneNumber, normalizedNew));
+  if (conflict && conflict.id !== userId) {
     return res.status(409).json({ error: "duplicate_phone", message: "That number is already linked to another account." });
   }
 
@@ -463,7 +465,7 @@ router.post("/request-phone-change", async (req, res) => {
 });
 
 // Confirm phone change — verify OTP sent to the new number
-router.post("/confirm-phone-change", async (req, res) => {
+router.post("/confirm-phone-change", credentialLimiter, async (req, res) => {
   const { userId, code } = req.body as { userId?: number; code?: string };
 
   if (!userId || !code) {
@@ -499,26 +501,26 @@ router.post("/confirm-phone-change", async (req, res) => {
     .returning();
 
   const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, userId));
-  res.json({ success: true, user: safeUser(updated, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+  res.json({ success: true, user: safeUser(updated, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))), sessionToken: signUserToken(updated.id) });
 });
 
 // ── Forgot / Reset Password ───────────────────────────────────────────────
 const WEBSITE_URL = process.env.WEBSITE_URL || "https://textbanks.app";
 
 // Step 1: request reset — by email (sends link) or by phone (sends SMS OTP)
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", codeSendLimiter, async (req, res) => {
   const { identifier } = req.body as { identifier?: string };
   if (!identifier) return res.status(400).json({ error: "bad_request", message: "Email or phone number is required." });
 
   const isEmail = identifier.includes("@");
-  const allUsers = await db.select().from(usersTable);
 
-  let user: typeof allUsers[number] | undefined;
+  // Indexed lookup (phone_number and email are unique) instead of scanning all users.
+  let user: typeof usersTable.$inferSelect | undefined;
   if (isEmail) {
-    user = allUsers.find((u) => u.email?.toLowerCase() === identifier.toLowerCase().trim());
+    [user] = await db.select().from(usersTable).where(eq(usersTable.email, identifier.toLowerCase().trim()));
   } else {
-    const digits = identifier.replace(/\D/g, "");
-    user = allUsers.find((u) => u.phoneNumber.replace(/\D/g, "") === digits);
+    const digits = normalizePhone(identifier);
+    [user] = await db.select().from(usersTable).where(eq(usersTable.phoneNumber, digits));
   }
 
   // Always respond 200 to prevent enumeration
@@ -547,10 +549,10 @@ router.post("/forgot-password", async (req, res) => {
 });
 
 // Step 2a: Reset via email token
-router.post("/reset-password-token", async (req, res) => {
+router.post("/reset-password-token", credentialLimiter, async (req, res) => {
   const { token, newPassword } = req.body as { token?: string; newPassword?: string };
   if (!token || !newPassword) return res.status(400).json({ error: "bad_request", message: "Token and new password are required." });
-  if (newPassword.length < 6) return res.status(400).json({ error: "bad_request", message: "Password must be at least 6 characters." });
+  if (newPassword.length < 8) return res.status(400).json({ error: "bad_request", message: "Password must be at least 8 characters." });
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.passwordResetToken, token));
   if (!user) return res.status(404).json({ error: "invalid_token", message: "This reset link is invalid or has already been used." });
@@ -564,10 +566,10 @@ router.post("/reset-password-token", async (req, res) => {
 });
 
 // Step 2b: Reset via SMS OTP
-router.post("/reset-password-otp", async (req, res) => {
+router.post("/reset-password-otp", credentialLimiter, async (req, res) => {
   const { userId, otp, newPassword } = req.body as { userId?: number; otp?: string; newPassword?: string };
   if (!userId || !otp || !newPassword) return res.status(400).json({ error: "bad_request", message: "User ID, OTP, and new password are required." });
-  if (newPassword.length < 6) return res.status(400).json({ error: "bad_request", message: "Password must be at least 6 characters." });
+  if (newPassword.length < 8) return res.status(400).json({ error: "bad_request", message: "Password must be at least 8 characters." });
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
   if (!user) return res.status(404).json({ error: "not_found", message: "User not found." });
@@ -615,9 +617,11 @@ router.post("/google", async (req, res) => {
   const { sub: googleId, email, given_name: firstName, family_name: lastName } = payload;
   const normalizedEmail = email.toLowerCase();
 
-  // Try to find existing user by google_id or email
-  const allUsers = await db.select().from(usersTable);
-  let user = allUsers.find((u) => u.googleId === googleId) ?? allUsers.find((u) => u.email?.toLowerCase() === normalizedEmail);
+  // Try to find existing user by google_id, then by email (both unique-indexed).
+  let [user] = await db.select().from(usersTable).where(eq(usersTable.googleId, googleId));
+  if (!user) {
+    [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail));
+  }
 
   if (user) {
     // Link google_id if not already linked
@@ -625,7 +629,7 @@ router.post("/google", async (req, res) => {
       await db.update(usersTable).set({ googleId }).where(eq(usersTable.id, user.id));
     }
     const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, user.id));
-    return res.json({ success: true, user: safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+    return res.json({ success: true, user: safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))), sessionToken: signUserToken(user.id) });
   }
 
   // New Google user — needs phone number to complete registration
@@ -648,21 +652,20 @@ router.post("/google/complete", async (req, res) => {
     return res.status(400).json({ error: "bad_request", message: "Google ID, email, and phone number are required." });
   }
 
-  const normalized = phoneNumber.replace(/\D/g, "");
+  const normalized = normalizePhone(phoneNumber);
   if (normalized.length < 10) {
     return res.status(400).json({ error: "bad_phone", message: "Please enter a valid phone number." });
   }
 
-  // Check for duplicates
-  const allUsers = await db.select().from(usersTable);
-  const phoneConflict = allUsers.find((u) => u.phoneNumber.replace(/\D/g, "") === normalized);
+  // Check for duplicates via indexed lookups.
+  const [phoneConflict] = await db.select().from(usersTable).where(eq(usersTable.phoneNumber, normalized));
   if (phoneConflict) {
     return res.status(409).json({ error: "duplicate_phone", message: "That phone number is already registered. Try signing in instead." });
   }
-  const googleConflict = allUsers.find((u) => u.googleId === googleId);
+  const [googleConflict] = await db.select().from(usersTable).where(eq(usersTable.googleId, googleId));
   if (googleConflict) {
     const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, googleConflict.id));
-    return res.json({ success: true, user: safeUser(googleConflict, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+    return res.json({ success: true, user: safeUser(googleConflict, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))), sessionToken: signUserToken(googleConflict.id) });
   }
 
   // Generate email verification token
@@ -691,7 +694,7 @@ router.post("/google/complete", async (req, res) => {
     sendWelcomeEmail(email, user.firstName, normalized, emailVerificationToken)
       .catch((e) => console.error("[Google Complete] Email failed:", e instanceof Error ? e.message : e));
 
-    return res.status(201).json({ success: true, user: safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))) });
+    return res.status(201).json({ success: true, user: safeUser(user, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))), sessionToken: signUserToken(user.id) });
   } catch (e: unknown) {
     const msg = String((e as Record<string, unknown>)?.message || "");
     if (msg.includes("23505") || msg.includes("unique")) {

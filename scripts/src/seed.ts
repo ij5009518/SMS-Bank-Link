@@ -34,7 +34,7 @@ async function seed() {
   // Insert demo users
   const users = await db.insert(usersTable).values([
     {
-      phoneNumber: "+1 (555) 201-4587",
+      phoneNumber: "5552014587",
       firstName: "Maria",
       lastName: "Gonzalez",
       smsConsent: true,
@@ -44,7 +44,7 @@ async function seed() {
       createdAt: new Date("2026-01-15"),
     },
     {
-      phoneNumber: "+1 (555) 348-9012",
+      phoneNumber: "5553489012",
       firstName: "James",
       lastName: "Okafor",
       smsConsent: true,
@@ -54,7 +54,7 @@ async function seed() {
       createdAt: new Date("2026-01-22"),
     },
     {
-      phoneNumber: "+1 (555) 472-3301",
+      phoneNumber: "5554723301",
       firstName: "Linda",
       lastName: "Nguyen",
       smsConsent: true,
@@ -64,7 +64,7 @@ async function seed() {
       createdAt: new Date("2026-02-03"),
     },
     {
-      phoneNumber: "+1 (555) 519-7654",
+      phoneNumber: "5555197654",
       firstName: "Robert",
       lastName: "Thornton",
       smsConsent: true,
@@ -74,7 +74,7 @@ async function seed() {
       createdAt: new Date("2026-02-10"),
     },
     {
-      phoneNumber: "+1 (555) 683-2290",
+      phoneNumber: "5556832290",
       firstName: "Aisha",
       lastName: "Williams",
       smsConsent: true,
@@ -84,7 +84,7 @@ async function seed() {
       createdAt: new Date("2026-02-18"),
     },
     {
-      phoneNumber: "+1 (555) 791-5543",
+      phoneNumber: "5557915543",
       firstName: "Carlos",
       lastName: "Rivera",
       smsConsent: true,
@@ -94,7 +94,7 @@ async function seed() {
       createdAt: new Date("2026-03-01"),
     },
     {
-      phoneNumber: "+1 (929) 314-5096",
+      phoneNumber: "9293145096",
       firstName: "Samuel",
       lastName: "Hauer",
       smsConsent: true,
