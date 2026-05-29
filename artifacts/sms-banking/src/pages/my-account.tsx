@@ -54,6 +54,7 @@ import { PublicLayout } from "@/components/layout/PublicLayout";
 import { TextBanksLogo } from "@/components/layout/Logo";
 import { useGetUserTransactions, useGetSmsLogs, useGetUser, useTellerEnroll, useGetTellerConfig, getGetUserQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { clearUserToken, getUserToken } from "@/lib/auth-fetch";
 
 declare global {
   interface Window {
@@ -82,7 +83,14 @@ type SessionUser = {
 function getSession(): SessionUser | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as SessionUser) : null;
+    if (!raw) return null;
+    // A session is only valid alongside an auth token. This also transparently
+    // signs out stale pre-token sessions, prompting a fresh sign-in.
+    if (!getUserToken()) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return JSON.parse(raw) as SessionUser;
   } catch { return null; }
 }
 function saveSession(user: SessionUser) {
@@ -90,6 +98,7 @@ function saveSession(user: SessionUser) {
 }
 function clearSession() {
   localStorage.removeItem(SESSION_KEY);
+  clearUserToken();
 }
 
 // Device trust token helpers (per-user, 30-day localStorage token)

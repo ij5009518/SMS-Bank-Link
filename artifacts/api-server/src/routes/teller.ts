@@ -15,6 +15,8 @@ import {
   getTellerAppId,
   type TellerAccount,
 } from "../lib/teller.js";
+import { requireAuth, requireSelf, getAuth } from "../middlewares/auth";
+import { encryptSecret, decryptSecret } from "../lib/secret-crypto.js";
 
 const router: IRouter = Router();
 
@@ -75,14 +77,20 @@ async function syncAccountsForEnrollment(
   return { linked: saved.length, accounts: saved };
 }
 
-router.post("/enroll", async (req, res) => {
+router.post("/enroll", requireAuth, async (req, res) => {
   try {
     const body = TellerEnrollBody.parse(req.body);
     const { userId, accessToken, enrollmentId, institutionName } = body;
 
+    const auth = getAuth(req)!;
+    if (auth.role !== "admin" && auth.sub !== userId) {
+      return res.status(403).json({ error: "forbidden", message: "You can only link banks to your own profile." });
+    }
+
+    // Encrypt the bank access token at rest.
     await db
       .insert(tellerEnrollmentsTable)
-      .values({ userId, enrollmentId, accessToken, institutionName })
+      .values({ userId, enrollmentId, accessToken: encryptSecret(accessToken), institutionName })
       .onConflictDoNothing();
 
     let result: { linked: number; accounts: unknown[] };
@@ -114,8 +122,8 @@ router.post("/enroll", async (req, res) => {
   }
 });
 
-router.post("/sync/:userId", async (req, res) => {
-  const userId = parseInt(req.params.userId);
+router.post("/sync/:userId", requireAuth, requireSelf(), async (req, res) => {
+  const userId = parseInt(String(req.params.userId), 10);
   if (isNaN(userId)) {
     return res.status(400).json({ error: "bad_request", message: "Invalid user ID" });
   }
@@ -134,7 +142,7 @@ router.post("/sync/:userId", async (req, res) => {
 
   for (const enrollment of enrollments) {
     try {
-      const { linked } = await syncAccountsForEnrollment(userId, enrollment.accessToken);
+      const { linked } = await syncAccountsForEnrollment(userId, decryptSecret(enrollment.accessToken));
       totalLinked += linked;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -154,8 +162,8 @@ router.post("/sync/:userId", async (req, res) => {
   });
 });
 
-router.get("/accounts/:userId", async (req, res) => {
-  const userId = parseInt(req.params.userId);
+router.get("/accounts/:userId", requireAuth, requireSelf(), async (req, res) => {
+  const userId = parseInt(String(req.params.userId), 10);
   if (isNaN(userId)) {
     return res.status(400).json({ error: "bad_request", message: "Invalid user ID" });
   }
@@ -171,13 +179,14 @@ router.get("/accounts/:userId", async (req, res) => {
 
   const results = await Promise.allSettled(
     enrollments.map(async (enrollment) => {
-      const tellerAccounts = await listAccounts(enrollment.accessToken);
+      const token = decryptSecret(enrollment.accessToken);
+      const tellerAccounts = await listAccounts(token);
       return Promise.all(
         tellerAccounts.map(async (acct) => {
           let availableBalance: number | null = null;
           let ledgerBalance: number | null = null;
           try {
-            const bal = await getBalance(enrollment.accessToken, acct.id);
+            const bal = await getBalance(token, acct.id);
             availableBalance = parseFloat(bal.available);
             ledgerBalance = parseFloat(bal.ledger);
           } catch {
@@ -217,8 +226,8 @@ router.get("/accounts/:userId", async (req, res) => {
   res.json(allAccounts.flat());
 });
 
-router.post("/sync-transactions/:userId", async (req, res) => {
-  const userId = parseInt(req.params.userId);
+router.post("/sync-transactions/:userId", requireAuth, requireSelf(), async (req, res) => {
+  const userId = parseInt(String(req.params.userId), 10);
   if (isNaN(userId)) {
     return res.status(400).json({ error: "bad_request", message: "Invalid user ID" });
   }
@@ -237,7 +246,8 @@ router.post("/sync-transactions/:userId", async (req, res) => {
 
   for (const enrollment of enrollments) {
     try {
-      const tellerAccounts = await listAccounts(enrollment.accessToken);
+      const token = decryptSecret(enrollment.accessToken);
+      const tellerAccounts = await listAccounts(token);
 
       for (const acct of tellerAccounts) {
         const dbAccount = await db
@@ -252,7 +262,7 @@ router.post("/sync-transactions/:userId", async (req, res) => {
         if (dbAccount.length === 0) continue;
         const accountId = dbAccount[0].id;
 
-        const txns = await listTransactions(enrollment.accessToken, acct.id, 25);
+        const txns = await listTransactions(token, acct.id, 25);
 
         if (txns.length === 0) continue;
 

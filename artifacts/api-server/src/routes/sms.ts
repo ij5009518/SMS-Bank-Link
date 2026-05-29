@@ -11,12 +11,19 @@ import {
 import { SimulateSmsBody } from "@workspace/api-zod";
 import { eq, desc, and } from "drizzle-orm";
 import { listAccounts, getBalance, listTransactions } from "../lib/teller.js";
-import { sendSms, normalizeE164, isConfigured } from "../lib/signalwire.js";
+import { sendSms, normalizeE164, isConfigured, validateWebhookSignature } from "../lib/signalwire.js";
+import { requireAuth, requireAdmin, getAuth } from "../middlewares/auth";
+import { rateLimit } from "../middlewares/rate-limit";
+import { decryptSecret } from "../lib/secret-crypto.js";
 
 const router: IRouter = Router();
 
-router.get("/logs", async (req, res) => {
-  const userId = req.query.userId ? parseInt(req.query.userId as string) : null;
+router.get("/logs", requireAuth, async (req, res) => {
+  const auth = getAuth(req)!;
+  // Non-admins may only ever see their own logs, regardless of query params.
+  const userId = auth.role === "admin"
+    ? (req.query.userId ? parseInt(req.query.userId as string) : null)
+    : auth.sub ?? null;
   const limit = parseInt((req.query.limit as string) || "50") || 50;
 
   let rows;
@@ -34,7 +41,7 @@ router.get("/logs", async (req, res) => {
   res.json(rows);
 });
 
-router.get("/status", (_req, res) => {
+router.get("/status", requireAdmin, (_req, res) => {
   res.json({
     configured: isConfigured(),
     provider: "SignalWire",
@@ -46,6 +53,19 @@ router.get("/status", (_req, res) => {
 // SignalWire inbound webhook (LaML/TwiML-compatible)
 router.post("/webhook", async (req, res) => {
   try {
+    // Verify the request actually came from SignalWire before trusting `From`.
+    // (Skipped automatically when no auth token is configured, e.g. local dev.)
+    const signature =
+      (req.header("x-signalwire-signature") || req.header("x-twilio-signature")) ?? undefined;
+    const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol;
+    const host = (req.headers["x-forwarded-host"] as string) || req.headers.host;
+    const fullUrl = process.env.PUBLIC_WEBHOOK_URL || `${proto}://${host}${req.originalUrl}`;
+    if (!validateWebhookSignature({ signature, url: fullUrl, params: req.body ?? {} })) {
+      console.warn("[SMS Webhook] Rejected request with invalid signature");
+      res.status(403).set("Content-Type", "text/xml").send("<Response></Response>");
+      return;
+    }
+
     const from: string = req.body?.From || req.body?.from || "";
     const body: string = req.body?.Body || req.body?.body || "";
 
@@ -112,6 +132,7 @@ router.post("/webhook", async (req, res) => {
       .from(tellerEnrollmentsTable)
       .where(eq(tellerEnrollmentsTable.userId, user.id))
       .limit(1);
+    const enrollmentToken = enrollment ? decryptSecret(enrollment.accessToken) : undefined;
 
     let responseText = "";
 
@@ -124,15 +145,15 @@ router.post("/webhook", async (req, res) => {
       await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, user.id));
       responseText = "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
     } else if (cmd === "BAL" || cmd.startsWith("BAL ")) {
-      responseText = await handleBalance(cmd, user.id, enrollment?.accessToken);
+      responseText = await handleBalance(cmd, user.id, enrollmentToken);
     } else if (cmd === "TRANS" || cmd.startsWith("TRANS ")) {
-      responseText = await handleTransactions(cmd, user.id, enrollment?.accessToken);
+      responseText = await handleTransactions(cmd, user.id, enrollmentToken);
     } else if (cmd === "LAST") {
-      responseText = await handleLastTransaction(user.id, enrollment?.accessToken);
+      responseText = await handleLastTransaction(user.id, enrollmentToken);
     } else if (cmd === "LIMIT") {
-      responseText = await handleCreditLimit(user.id, enrollment?.accessToken);
+      responseText = await handleCreditLimit(user.id, enrollmentToken);
     } else if (cmd === "SPEND") {
-      responseText = await handleSpend(user.id, enrollment?.accessToken);
+      responseText = await handleSpend(user.id, enrollmentToken);
     } else {
       responseText = "Unknown command. Reply HELP for available commands.";
     }
@@ -159,7 +180,7 @@ router.post("/webhook", async (req, res) => {
 });
 
 // Public landing-page demo — no auth, no userId, hardcoded virtual account
-router.post("/demo", (req, res) => {
+router.post("/demo", rateLimit({ windowMs: 60 * 1000, max: 30, keyPrefix: "sms-demo" }), (req, res) => {
   const raw = (req.body as { command?: string }).command ?? "";
   const cmd = raw.trim().toUpperCase();
 
@@ -218,11 +239,16 @@ router.post("/demo", (req, res) => {
 });
 
 // Simulate SMS (for testing via dashboard — still sends real SMS if configured)
-router.post("/simulate", async (req, res) => {
+router.post("/simulate", requireAuth, async (req, res) => {
   try {
     const body = SimulateSmsBody.parse(req.body);
     const { userId, command } = body;
     const cmd = command.trim().toUpperCase();
+
+    const auth = getAuth(req)!;
+    if (auth.role !== "admin" && auth.sub !== userId) {
+      return res.status(403).json({ error: "forbidden", message: "You can only simulate SMS for your own account." });
+    }
 
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
     if (!user) {
@@ -244,6 +270,7 @@ router.post("/simulate", async (req, res) => {
       .from(tellerEnrollmentsTable)
       .where(eq(tellerEnrollmentsTable.userId, userId))
       .limit(1);
+    const enrollmentToken = enrollment ? decryptSecret(enrollment.accessToken) : undefined;
 
     let responseText = "";
 
@@ -253,15 +280,15 @@ router.post("/simulate", async (req, res) => {
       await db.update(usersTable).set({ optedOut: true, onboardingStatus: "opted_out" }).where(eq(usersTable.id, userId));
       responseText = "You've been unsubscribed from TextBank SMS. Reply START to re-subscribe.";
     } else if (cmd === "BAL" || cmd.startsWith("BAL ")) {
-      responseText = await handleBalance(cmd, userId, enrollment?.accessToken);
+      responseText = await handleBalance(cmd, userId, enrollmentToken);
     } else if (cmd === "TRANS" || cmd.startsWith("TRANS ")) {
-      responseText = await handleTransactions(cmd, userId, enrollment?.accessToken);
+      responseText = await handleTransactions(cmd, userId, enrollmentToken);
     } else if (cmd === "LAST") {
-      responseText = await handleLastTransaction(userId, enrollment?.accessToken);
+      responseText = await handleLastTransaction(userId, enrollmentToken);
     } else if (cmd === "LIMIT") {
-      responseText = await handleCreditLimit(userId, enrollment?.accessToken);
+      responseText = await handleCreditLimit(userId, enrollmentToken);
     } else if (cmd === "SPEND") {
-      responseText = await handleSpend(userId, enrollment?.accessToken);
+      responseText = await handleSpend(userId, enrollmentToken);
     } else {
       responseText = "Unknown command. Reply HELP for available commands.";
     }
@@ -307,12 +334,12 @@ async function handleBalance(cmd: string, userId: number, accessToken?: string):
     try {
       const allEnrollments = await db.select().from(tellerEnrollmentsTable).where(eq(tellerEnrollmentsTable.userId, userId));
       const allTellerAccounts = (
-        await Promise.allSettled(allEnrollments.map((e) => listAccounts(e.accessToken)))
+        await Promise.allSettled(allEnrollments.map((e) => listAccounts(decryptSecret(e.accessToken))))
       )
         .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof listAccounts>>> => r.status === "fulfilled")
         .flatMap((r) => r.value);
 
-      const enrollmentMap = new Map(allEnrollments.map((e) => [e.enrollmentId, e.accessToken]));
+      const enrollmentMap = new Map(allEnrollments.map((e) => [e.enrollmentId, decryptSecret(e.accessToken)]));
 
       if (allTellerAccounts.length === 0) {
         return "No accounts found. Please visit our website to re-link your bank.";
@@ -373,7 +400,7 @@ async function handleTransactions(cmd: string, userId: number, accessToken?: str
       const firstGoodEnrollment = allEnrollments[0];
       if (!firstGoodEnrollment) throw new Error("no enrollment");
 
-      const tellerAccounts = await listAccounts(firstGoodEnrollment.accessToken);
+      const tellerAccounts = await listAccounts(decryptSecret(firstGoodEnrollment.accessToken));
       if (tellerAccounts.length === 0) {
         return "No accounts linked. Visit our website to re-link your bank.";
       }
@@ -387,7 +414,7 @@ async function handleTransactions(cmd: string, userId: number, accessToken?: str
             a.last_four.includes(arg)
           ) ?? tellerAccounts[0];
 
-      const txns = await listTransactions(firstGoodEnrollment.accessToken, targetAccount.id, count);
+      const txns = await listTransactions(decryptSecret(firstGoodEnrollment.accessToken), targetAccount.id, count);
       if (txns.length === 0) return "No recent transactions found.";
 
       const lines = txns.map((t) => {
@@ -424,11 +451,12 @@ async function handleLastTransaction(userId: number, accessToken?: string): Prom
     try {
       const [enrollment] = await db.select().from(tellerEnrollmentsTable).where(eq(tellerEnrollmentsTable.userId, userId));
       if (!enrollment) throw new Error("no enrollment");
+      const token = decryptSecret(enrollment.accessToken);
 
-      const accounts = await listAccounts(enrollment.accessToken);
+      const accounts = await listAccounts(token);
       if (accounts.length === 0) return "No accounts linked.";
 
-      const txns = await listTransactions(enrollment.accessToken, accounts[0].id, 1);
+      const txns = await listTransactions(token, accounts[0].id, 1);
       if (txns.length === 0) return "No transactions found.";
 
       const t = txns[0];
@@ -460,7 +488,7 @@ async function handleCreditLimit(userId: number, accessToken?: string): Promise<
       const allEnrollments = await db.select().from(tellerEnrollmentsTable).where(eq(tellerEnrollmentsTable.userId, userId));
 
       const allAccounts = (
-        await Promise.allSettled(allEnrollments.map((e) => listAccounts(e.accessToken)))
+        await Promise.allSettled(allEnrollments.map((e) => listAccounts(decryptSecret(e.accessToken))))
       )
         .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof listAccounts>>> => r.status === "fulfilled")
         .flatMap((r) => r.value);
@@ -473,7 +501,7 @@ async function handleCreditLimit(userId: number, accessToken?: string): Promise<
         return "No credit card accounts found. Reply BAL for all account balances.";
       }
 
-      const enrollmentMap = new Map(allEnrollments.map((e) => [e.enrollmentId, e.accessToken]));
+      const enrollmentMap = new Map(allEnrollments.map((e) => [e.enrollmentId, decryptSecret(e.accessToken)]));
 
       const lines = await Promise.all(
         creditAccounts.map(async (acct) => {
@@ -521,7 +549,7 @@ async function handleSpend(userId: number, accessToken?: string): Promise<string
       const firstEnrollment = allEnrollments[0];
       if (!firstEnrollment) throw new Error("no enrollment");
 
-      const accounts = await listAccounts(firstEnrollment.accessToken);
+      const accounts = await listAccounts(decryptSecret(firstEnrollment.accessToken));
       if (accounts.length === 0) return "No accounts linked.";
 
       let totalSpend = 0;
@@ -529,7 +557,7 @@ async function handleSpend(userId: number, accessToken?: string): Promise<string
 
       await Promise.all(
         accounts.map(async (acct) => {
-          const txns = await listTransactions(firstEnrollment.accessToken, acct.id, 50);
+          const txns = await listTransactions(decryptSecret(firstEnrollment.accessToken), acct.id, 50);
           for (const t of txns) {
             if (t.type !== "debit") continue;
             if (new Date(t.date) < monthStart) continue;
