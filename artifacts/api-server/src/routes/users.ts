@@ -19,7 +19,7 @@ router.post("/register", rateLimit({ windowMs: 15 * 60 * 1000, max: 15, keyPrefi
     const body = RegisterUserBody.parse(req.body);
     const rawPassword = (req.body as Record<string, unknown>).password as string | undefined;
     const rawEmail = (req.body as Record<string, unknown>).email as string | undefined;
-    const passwordHash = rawPassword && rawPassword.length >= 6
+    const passwordHash = rawPassword && rawPassword.length >= 8
       ? await hashPassword(rawPassword)
       : undefined;
 

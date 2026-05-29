@@ -57,19 +57,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { clearUserToken, getUserToken } from "@/lib/auth-fetch";
 import { useToast } from "@/hooks/use-toast";
 
-declare global {
-  interface Window {
-    TellerConnect?: {
-      setup: (opts: {
-        applicationId: string;
-        environment: string;
-        onSuccess: (enrollment: { accessToken: string; enrollment: { id: string; institution: { name: string } } }) => void;
-        onExit?: () => void;
-      }) => { open: () => void };
-    };
-  }
-}
-
 const SESSION_KEY = "textbank_session";
 
 type SessionUser = {
@@ -515,7 +502,7 @@ export default function MyAccountPage() {
     setError(null);
     if (!signUpFirst || !signUpLast || !signUpPhone || !signUpPassword) { setError("Please fill in all fields."); return; }
     if (signUpEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signUpEmail)) { setError("Please enter a valid email address."); return; }
-    if (signUpPassword.length < 6) { setError("Password must be at least 6 characters."); return; }
+    if (signUpPassword.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (signUpPassword !== signUpConfirm) { setError("Passwords do not match."); return; }
     if (!signUpConsent) { setError("You must agree to receive SMS messages."); return; }
     setIsLoading(true);
@@ -1366,7 +1353,7 @@ export default function MyAccountPage() {
                     >
                       <Icon className="w-3.5 h-3.5" />
                       <span>{label}</span>
-                      {pro && <Crown className="w-3 h-3 text-amber-500" title="Pro feature" />}
+                      {pro && <Crown className="w-3 h-3 text-amber-500" aria-label="Pro feature" />}
                     </button>
                   ))}
                 </div>
@@ -2589,7 +2576,7 @@ export default function MyAccountPage() {
                     <Button
                       className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm"
                       onClick={forgotStep === "reset" ? handleForgotOtpReset : handleForgotPassword}
-                      disabled={forgotLoading || (forgotStep === "email" && !forgotEmail.trim()) || (forgotStep === "sms" && forgotPhone.replace(/\D/g, "").length < 10) || (forgotStep === "reset" && (forgotOtp.length < 6 || forgotNewPw.length < 6))}
+                      disabled={forgotLoading || (forgotStep === "email" && !forgotEmail.trim()) || (forgotStep === "sms" && forgotPhone.replace(/\D/g, "").length < 10) || (forgotStep === "reset" && (forgotOtp.length < 6 || forgotNewPw.length < 8))}
                     >
                       {forgotLoading ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Sending…</> :
                         forgotStep === "reset" ? "Reset Password" :

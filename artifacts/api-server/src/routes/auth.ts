@@ -64,8 +64,7 @@ router.post("/login", credentialLimiter, async (req, res) => {
   }
 
   const normalized = phoneNumber.replace(/\D/g, "");
-  const allUsers = await db.select().from(usersTable);
-  const user = allUsers.find((u) => u.phoneNumber.replace(/\D/g, "") === normalized);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.phoneNumber, normalized));
 
   // Use a single generic error for "no such account" and "wrong password" so
   // the endpoint can't be used to enumerate which phone numbers are registered.
@@ -119,8 +118,8 @@ router.post("/signup", credentialLimiter, async (req, res) => {
   if (!firstName || !lastName || !phoneNumber || !password) {
     return res.status(400).json({ error: "bad_request", message: "All fields are required." });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: "bad_request", message: "Password must be at least 6 characters." });
+  if (password.length < 8) {
+    return res.status(400).json({ error: "bad_request", message: "Password must be at least 8 characters." });
   }
 
   const normalizedPhone = phoneNumber.replace(/\D/g, "");
@@ -516,14 +515,14 @@ router.post("/forgot-password", codeSendLimiter, async (req, res) => {
   if (!identifier) return res.status(400).json({ error: "bad_request", message: "Email or phone number is required." });
 
   const isEmail = identifier.includes("@");
-  const allUsers = await db.select().from(usersTable);
 
-  let user: typeof allUsers[number] | undefined;
+  // Indexed lookup (phone_number and email are unique) instead of scanning all users.
+  let user: typeof usersTable.$inferSelect | undefined;
   if (isEmail) {
-    user = allUsers.find((u) => u.email?.toLowerCase() === identifier.toLowerCase().trim());
+    [user] = await db.select().from(usersTable).where(eq(usersTable.email, identifier.toLowerCase().trim()));
   } else {
     const digits = identifier.replace(/\D/g, "");
-    user = allUsers.find((u) => u.phoneNumber.replace(/\D/g, "") === digits);
+    [user] = await db.select().from(usersTable).where(eq(usersTable.phoneNumber, digits));
   }
 
   // Always respond 200 to prevent enumeration
@@ -555,7 +554,7 @@ router.post("/forgot-password", codeSendLimiter, async (req, res) => {
 router.post("/reset-password-token", credentialLimiter, async (req, res) => {
   const { token, newPassword } = req.body as { token?: string; newPassword?: string };
   if (!token || !newPassword) return res.status(400).json({ error: "bad_request", message: "Token and new password are required." });
-  if (newPassword.length < 6) return res.status(400).json({ error: "bad_request", message: "Password must be at least 6 characters." });
+  if (newPassword.length < 8) return res.status(400).json({ error: "bad_request", message: "Password must be at least 8 characters." });
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.passwordResetToken, token));
   if (!user) return res.status(404).json({ error: "invalid_token", message: "This reset link is invalid or has already been used." });
@@ -572,7 +571,7 @@ router.post("/reset-password-token", credentialLimiter, async (req, res) => {
 router.post("/reset-password-otp", credentialLimiter, async (req, res) => {
   const { userId, otp, newPassword } = req.body as { userId?: number; otp?: string; newPassword?: string };
   if (!userId || !otp || !newPassword) return res.status(400).json({ error: "bad_request", message: "User ID, OTP, and new password are required." });
-  if (newPassword.length < 6) return res.status(400).json({ error: "bad_request", message: "Password must be at least 6 characters." });
+  if (newPassword.length < 8) return res.status(400).json({ error: "bad_request", message: "Password must be at least 8 characters." });
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
   if (!user) return res.status(404).json({ error: "not_found", message: "User not found." });
@@ -620,9 +619,11 @@ router.post("/google", async (req, res) => {
   const { sub: googleId, email, given_name: firstName, family_name: lastName } = payload;
   const normalizedEmail = email.toLowerCase();
 
-  // Try to find existing user by google_id or email
-  const allUsers = await db.select().from(usersTable);
-  let user = allUsers.find((u) => u.googleId === googleId) ?? allUsers.find((u) => u.email?.toLowerCase() === normalizedEmail);
+  // Try to find existing user by google_id, then by email (both unique-indexed).
+  let [user] = await db.select().from(usersTable).where(eq(usersTable.googleId, googleId));
+  if (!user) {
+    [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail));
+  }
 
   if (user) {
     // Link google_id if not already linked
@@ -658,13 +659,12 @@ router.post("/google/complete", async (req, res) => {
     return res.status(400).json({ error: "bad_phone", message: "Please enter a valid phone number." });
   }
 
-  // Check for duplicates
-  const allUsers = await db.select().from(usersTable);
-  const phoneConflict = allUsers.find((u) => u.phoneNumber.replace(/\D/g, "") === normalized);
+  // Check for duplicates via indexed lookups.
+  const [phoneConflict] = await db.select().from(usersTable).where(eq(usersTable.phoneNumber, normalized));
   if (phoneConflict) {
     return res.status(409).json({ error: "duplicate_phone", message: "That phone number is already registered. Try signing in instead." });
   }
-  const googleConflict = allUsers.find((u) => u.googleId === googleId);
+  const [googleConflict] = await db.select().from(usersTable).where(eq(usersTable.googleId, googleId));
   if (googleConflict) {
     const accounts = await db.select().from(accountsTable).where(eq(accountsTable.userId, googleConflict.id));
     return res.json({ success: true, user: safeUser(googleConflict, accounts.map((a) => ({ ...a, currentBalance: Number(a.currentBalance) }))), sessionToken: signUserToken(googleConflict.id) });
