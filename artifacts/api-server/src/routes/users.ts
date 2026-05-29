@@ -11,6 +11,7 @@ import { sanitizeUser } from "../lib/sanitize.js";
 import { signUserToken } from "../lib/tokens.js";
 import { requireAuth, requireSelf, requireAdmin, getAuth } from "../middlewares/auth";
 import { rateLimit } from "../middlewares/rate-limit";
+import { normalizePhone } from "@workspace/db/phone";
 
 const router: IRouter = Router();
 
@@ -23,7 +24,7 @@ router.post("/register", rateLimit({ windowMs: 15 * 60 * 1000, max: 15, keyPrefi
       ? await hashPassword(rawPassword)
       : undefined;
 
-    const normalizedPhone = body.phoneNumber.replace(/\D/g, "");
+    const normalizedPhone = normalizePhone(body.phoneNumber);
     const normalizedEmail = rawEmail?.trim().toLowerCase() || null;
     const verificationCode = generateVerificationCode();
     const verificationExpiry = new Date(Date.now() + 10 * 60 * 1000);

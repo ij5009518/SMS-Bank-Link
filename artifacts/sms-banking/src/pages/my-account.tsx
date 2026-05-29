@@ -56,6 +56,7 @@ import { useGetUserTransactions, useGetSmsLogs, useGetUser, useTellerEnroll, use
 import { useQueryClient } from "@tanstack/react-query";
 import { clearUserToken, getUserToken } from "@/lib/auth-fetch";
 import { useToast } from "@/hooks/use-toast";
+import { formatPhone } from "@/lib/utils";
 
 const SESSION_KEY = "textbank_session";
 
@@ -1170,7 +1171,7 @@ export default function MyAccountPage() {
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-[#0D0E12] leading-none">{session.firstName} {session.lastName}</p>
-                        <p className="text-[11px] text-[#9A9AA8] mt-0.5">{session.phoneNumber}</p>
+                        <p className="text-[11px] text-[#9A9AA8] mt-0.5">{formatPhone(session.phoneNumber)}</p>
                       </div>
                       <span className={cn("hidden sm:inline text-[10px] font-semibold px-2 py-0.5 rounded-full border", statusConfig(session.onboardingStatus).cls)}>
                         {statusConfig(session.onboardingStatus).label}
@@ -1195,7 +1196,7 @@ export default function MyAccountPage() {
                           >
                             <div className="px-4 py-3 border-b border-[#EDE8E0] bg-[#F8F6F2]">
                               <p className="text-sm font-bold text-[#0D0E12]">{session.firstName} {session.lastName}</p>
-                              <p className="text-xs text-[#7C7C8A]">{session.phoneNumber}</p>
+                              <p className="text-xs text-[#7C7C8A]">{formatPhone(session.phoneNumber)}</p>
                             </div>
                             <div className="py-1">
                               <button
@@ -2425,7 +2426,7 @@ export default function MyAccountPage() {
 
                           {selectedPlan !== "basic" && (
                             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
-                              <span className="font-semibold">Coming soon:</span> Stripe billing will be enabled at launch. Your plan selection is saved and features will be unlocked automatically.
+                              <span className="font-semibold">Coming soon:</span> Stripe billing will be enabled at launch. Paid features unlock automatically once you subscribe — no plan change is charged or applied yet.
                             </div>
                           )}
                         </div>

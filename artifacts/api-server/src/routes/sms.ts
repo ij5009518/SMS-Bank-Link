@@ -15,6 +15,7 @@ import { sendSms, normalizeE164, isConfigured, validateWebhookSignature } from "
 import { requireAuth, requireAdmin, getAuth } from "../middlewares/auth";
 import { rateLimit } from "../middlewares/rate-limit";
 import { decryptSecret } from "../lib/secret-crypto.js";
+import { normalizePhone } from "@workspace/db/phone";
 
 const router: IRouter = Router();
 
@@ -75,33 +76,19 @@ router.post("/webhook", async (req, res) => {
     }
 
     const cmd = body.trim().toUpperCase();
-    const normalizedPhone = normalizeE164(from);
-    const digitsOnly = from.replace(/\D/g, "").replace(/^1/, "");
+    const fromKey = normalizePhone(from);
 
-    // Find user by phone — check primary number first, then secondary linked numbers
-    const allUsers = await db.select().from(usersTable);
-    let user = allUsers.find((u) => {
-      const uDigits = u.phoneNumber.replace(/\D/g, "").replace(/^1/, "");
-      return uDigits === digitsOnly;
-    });
+    // Find the user by phone — primary number first, then a verified secondary
+    // number (both indexed; no full-table scan).
+    let [user] = await db.select().from(usersTable).where(eq(usersTable.phoneNumber, fromKey));
 
     if (!user) {
-      // Check secondary (linked) phone numbers
-      const secondary = await db.select().from(phoneNumbersTable)
-        .where(and(
-          eq(phoneNumbersTable.phoneNumber, normalizedPhone.replace(/\D/g, "")),
-          eq(phoneNumbersTable.verified, true)
-        ));
-      if (secondary.length > 0) {
-        user = allUsers.find((u) => u.id === secondary[0].userId);
-      }
-      if (!user) {
-        // Try digits-only match on secondary numbers
-        const allSecondary = await db.select().from(phoneNumbersTable).where(eq(phoneNumbersTable.verified, true));
-        const match = allSecondary.find((p) => p.phoneNumber.replace(/\D/g, "").replace(/^1/, "") === digitsOnly);
-        if (match) {
-          user = allUsers.find((u) => u.id === match.userId);
-        }
+      const [secondary] = await db.select().from(phoneNumbersTable).where(and(
+        eq(phoneNumbersTable.phoneNumber, fromKey),
+        eq(phoneNumbersTable.verified, true),
+      ));
+      if (secondary) {
+        [user] = await db.select().from(usersTable).where(eq(usersTable.id, secondary.userId));
       }
     }
 

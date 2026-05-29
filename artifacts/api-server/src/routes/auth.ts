@@ -11,6 +11,7 @@ import { sanitizeUser } from "../lib/sanitize.js";
 import { signUserToken } from "../lib/tokens.js";
 import { generateVerificationCode } from "../lib/codes.js";
 import { rateLimit } from "../middlewares/rate-limit";
+import { normalizePhone } from "@workspace/db/phone";
 
 const scryptAsync = promisify(scrypt);
 const router: IRouter = Router();
@@ -63,7 +64,7 @@ router.post("/login", credentialLimiter, async (req, res) => {
     return res.status(400).json({ error: "bad_request", message: "Phone number and password are required." });
   }
 
-  const normalized = phoneNumber.replace(/\D/g, "");
+  const normalized = normalizePhone(phoneNumber);
   const [user] = await db.select().from(usersTable).where(eq(usersTable.phoneNumber, normalized));
 
   // Use a single generic error for "no such account" and "wrong password" so
@@ -122,7 +123,7 @@ router.post("/signup", credentialLimiter, async (req, res) => {
     return res.status(400).json({ error: "bad_request", message: "Password must be at least 8 characters." });
   }
 
-  const normalizedPhone = phoneNumber.replace(/\D/g, "");
+  const normalizedPhone = normalizePhone(phoneNumber);
   const normalizedEmail = email?.trim().toLowerCase() || null;
   const passwordHash = await hashPassword(password);
   const verificationCode = generateVerificationCode();
@@ -431,17 +432,14 @@ router.post("/request-phone-change", codeSendLimiter, async (req, res) => {
     return res.status(404).json({ error: "not_found", message: "User not found." });
   }
 
-  const normalizedNew = newPhoneNumber.replace(/\D/g, "");
+  const normalizedNew = normalizePhone(newPhoneNumber);
   if (normalizedNew.length < 10) {
     return res.status(400).json({ error: "bad_phone", message: "Please enter a valid phone number." });
   }
 
-  // Make sure it's not already taken by another account
-  const allUsers = await db.select().from(usersTable);
-  const conflict = allUsers.find((u) =>
-    u.id !== userId && u.phoneNumber.replace(/\D/g, "").replace(/^1/, "") === normalizedNew.replace(/^1/, "")
-  );
-  if (conflict) {
+  // Make sure it's not already taken by another account (indexed lookup).
+  const [conflict] = await db.select().from(usersTable).where(eq(usersTable.phoneNumber, normalizedNew));
+  if (conflict && conflict.id !== userId) {
     return res.status(409).json({ error: "duplicate_phone", message: "That number is already linked to another account." });
   }
 
@@ -521,7 +519,7 @@ router.post("/forgot-password", codeSendLimiter, async (req, res) => {
   if (isEmail) {
     [user] = await db.select().from(usersTable).where(eq(usersTable.email, identifier.toLowerCase().trim()));
   } else {
-    const digits = identifier.replace(/\D/g, "");
+    const digits = normalizePhone(identifier);
     [user] = await db.select().from(usersTable).where(eq(usersTable.phoneNumber, digits));
   }
 
@@ -654,7 +652,7 @@ router.post("/google/complete", async (req, res) => {
     return res.status(400).json({ error: "bad_request", message: "Google ID, email, and phone number are required." });
   }
 
-  const normalized = phoneNumber.replace(/\D/g, "");
+  const normalized = normalizePhone(phoneNumber);
   if (normalized.length < 10) {
     return res.status(400).json({ error: "bad_phone", message: "Please enter a valid phone number." });
   }

@@ -4,6 +4,7 @@ import { usersTable, phoneNumbersTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendSms, normalizeE164 } from "../lib/signalwire.js";
+import { normalizePhone } from "@workspace/db/phone";
 
 const router: IRouter = Router({ mergeParams: true });
 
@@ -35,14 +36,13 @@ router.post("/", async (req, res) => {
     return res.status(403).json({ error: "plan_required", message: "Multiple phone numbers require a Premium plan." });
   }
 
-  const normalized = phoneNumber.replace(/\D/g, "");
+  const normalized = normalizePhone(phoneNumber);
   if (normalized.length < 10) {
     return res.status(400).json({ error: "bad_phone", message: "Please enter a valid phone number." });
   }
 
   // Can't add the primary number again
-  const primaryDigits = user.phoneNumber.replace(/\D/g, "").replace(/^1/, "");
-  if (normalized.replace(/^1/, "") === primaryDigits) {
+  if (normalized === normalizePhone(user.phoneNumber)) {
     return res.status(409).json({ error: "duplicate_phone", message: "That is already your primary phone number." });
   }
 
@@ -54,12 +54,9 @@ router.post("/", async (req, res) => {
     return res.status(409).json({ error: "duplicate_phone", message: "That number is already linked to this account." });
   }
 
-  // Check not on another account (primary)
-  const allUsers = await db.select().from(usersTable);
-  const conflict = allUsers.find((u) =>
-    u.id !== userId && u.phoneNumber.replace(/\D/g, "").replace(/^1/, "") === normalized.replace(/^1/, "")
-  );
-  if (conflict) {
+  // Check not on another account (primary) — indexed lookup.
+  const [conflict] = await db.select().from(usersTable).where(eq(usersTable.phoneNumber, normalized));
+  if (conflict && conflict.id !== userId) {
     return res.status(409).json({ error: "duplicate_phone", message: "That number is already linked to another Text Banks account." });
   }
 

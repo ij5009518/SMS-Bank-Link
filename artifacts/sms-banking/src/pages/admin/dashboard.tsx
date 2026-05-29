@@ -308,7 +308,7 @@ function TabUsers() {
           {users.map(user => (
             <TableRow key={user.id}>
               <TableCell className="font-medium">{user.firstName} {user.lastName}</TableCell>
-              <TableCell>{user.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1-****-$2')}</TableCell>
+              <TableCell>{user.phoneNumber.replace(/(\d{3})\d{3}(\d{4})/, '($1) ***-$2')}</TableCell>
               <TableCell>
                 <Badge variant={user.onboardingStatus === 'active' ? 'default' : 'secondary'} className="capitalize">
                   {user.onboardingStatus.replace('_', ' ')}
@@ -401,7 +401,7 @@ function TabLogs() {
               <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                 {format(new Date(log.createdAt), "MMM d, HH:mm:ss")}
               </TableCell>
-              <TableCell className="font-mono text-sm">{log.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1-****-$2')}</TableCell>
+              <TableCell className="font-mono text-sm">{log.phoneNumber.replace(/(\d{3})\d{3}(\d{4})/, '($1) ***-$2')}</TableCell>
               <TableCell className="max-w-md truncate">{log.message}</TableCell>
               <TableCell>
                 <Badge variant="secondary" className={`text-xs ${log.status === 'failed' ? 'bg-red-100 text-red-700' : ''}`}>

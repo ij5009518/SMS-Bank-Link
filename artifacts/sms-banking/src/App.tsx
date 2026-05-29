@@ -1,15 +1,19 @@
+import { lazy, Suspense } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Spinner } from "@/components/ui/spinner";
 
-import LandingPage from "./pages/landing";
-import RegisterPage from "./pages/register";
-import MyAccountPage from "./pages/my-account";
-import AdminDashboard from "./pages/admin/dashboard";
-import PrivacyPolicy from "./pages/privacy";
-import TermsOfService from "./pages/terms";
-import NotFound from "./pages/not-found";
+// Route-level code splitting keeps the initial bundle small — each page is
+// fetched on demand instead of all up front.
+const LandingPage = lazy(() => import("./pages/landing"));
+const RegisterPage = lazy(() => import("./pages/register"));
+const MyAccountPage = lazy(() => import("./pages/my-account"));
+const AdminDashboard = lazy(() => import("./pages/admin/dashboard"));
+const PrivacyPolicy = lazy(() => import("./pages/privacy"));
+const TermsOfService = lazy(() => import("./pages/terms"));
+const NotFound = lazy(() => import("./pages/not-found"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,17 +24,27 @@ const queryClient = new QueryClient({
   },
 });
 
+function PageLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <Spinner className="w-6 h-6 text-muted-foreground" />
+    </div>
+  );
+}
+
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={LandingPage} />
-      <Route path="/register" component={RegisterPage} />
-      <Route path="/my-account" component={MyAccountPage} />
-      <Route path="/admin" component={AdminDashboard} />
-      <Route path="/privacy" component={PrivacyPolicy} />
-      <Route path="/terms" component={TermsOfService} />
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<PageLoader />}>
+      <Switch>
+        <Route path="/" component={LandingPage} />
+        <Route path="/register" component={RegisterPage} />
+        <Route path="/my-account" component={MyAccountPage} />
+        <Route path="/admin" component={AdminDashboard} />
+        <Route path="/privacy" component={PrivacyPolicy} />
+        <Route path="/terms" component={TermsOfService} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
