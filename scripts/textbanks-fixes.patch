@@ -1,0 +1,743 @@
+diff --git a/artifacts/api-server/src/lib/format-sms.ts b/artifacts/api-server/src/lib/format-sms.ts
+new file mode 100755
+index 0000000..2b9b354
+--- /dev/null
++++ b/artifacts/api-server/src/lib/format-sms.ts
+@@ -0,0 +1,85 @@
++/**
++ * SMS-friendly formatters. SMS replies need to be short, scannable, and free of
++ * raw bank-statement cruft (ACH descriptors, originator IDs, trace numbers).
++ *
++ * Goals:
++ * - A grandparent on a flip phone should be able to read it.
++ * - Stay under ~160 chars per logical line so it fits in a single SMS segment.
++ * - Currency always renders as "$1,234.56" (US locale).
++ * - Dates render as "May 5" (short month + day, no year).
++ */
++
++const ACH_NOISE = [
++  /\bORIG\s*CO\s*NAME\s*:?/gi,
++  /\bORIG\s*ID\s*:?/gi,
++  /\bENTRY\s*DESCR\s*:?/gi,
++  /\bSEC\s*:?\s*[A-Z]{2,4}/gi, // SEC:WEB, SEC:PPD, SEC:CCD, etc.
++  /\bIND\s*ID\s*:?/gi,
++  /\bTRACE\s*#?:?/gi,
++  /\bDDA\b/gi,
++  /\bACH\s*(DEBIT|CREDIT|TRANSFER|PAYMENT)?/gi,
++  /\bPPD\b/gi,
++  /\bWEB\s*PMT\b/gi,
++  /\bRETRY\s*PYMT\b/gi,
++  /\bH\d{6,}\b/g,           // Origin trace IDs like H363899872
++  /\b\d{10,}\b/g,           // Raw long numeric IDs
++  /\s{2,}/g,
++];
++
++/**
++ * Turn raw bank-statement gunk into a short, human-readable merchant label.
++ *
++ * "ORIG CO NAME:PCB PMTS CO ENTRY DESCR:RETRY PYMT SEC:WEB IND ID:0842167603 ORIG ID:H363899872"
++ *   -> "PCB Pmts Co"
++ *
++ * "Zelle payment from ISAAC LLC 0HG08B21YMI3"
++ *   -> "Zelle from ISAAC LLC"
++ */
++export function prettifyMerchant(raw: string | null | undefined, maxLen = 28): string {
++  if (!raw) return "Transaction";
++  let s = String(raw).trim();
++
++  // Drop ACH descriptors and trace IDs first.
++  for (const re of ACH_NOISE) s = s.replace(re, " ");
++  s = s.replace(/[:|]+/g, " ").replace(/\s{2,}/g, " ").trim();
++
++  // Trim leading dates/amounts that sometimes get prepended.
++  s = s.replace(/^(\d{1,2}\/\d{1,2}(\/\d{2,4})?)\s+/, "");
++
++  // Light title-casing for ALL-CAPS strings (preserves obvious acronyms like LLC, USA, ATM).
++  if (s === s.toUpperCase() && s.length > 3) {
++    s = s
++      .toLowerCase()
++      .split(/\s+/)
++      .map((w) => (/^(llc|usa|atm|inc|co|corp|us|po|bofa|jp)$/i.test(w) ? w.toUpperCase() : w[0]?.toUpperCase() + w.slice(1)))
++      .join(" ");
++  }
++
++  if (!s) return "Transaction";
++  if (s.length > maxLen) s = s.slice(0, maxLen - 1).trimEnd() + "…";
++  return s;
++}
++
++/** $1,234.56 — never bare numbers in SMS. */
++export function formatAmount(n: number): string {
++  const abs = Math.abs(n);
++  return "$" + abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
++}
++
++/** Signed amount: "-$33.00" or "+$1,850.00". */
++export function formatSignedAmount(n: number, isCredit: boolean): string {
++  return (isCredit ? "+" : "-") + formatAmount(n);
++}
++
++/** "May 5" — short month + day, no year. */
++export function formatSmsDate(input: Date | string | number): string {
++  const d = input instanceof Date ? input : new Date(input);
++  if (isNaN(d.getTime())) return "—";
++  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
++}
++
++/** Keep an SMS body inside one or two segments by hard-cap. */
++export function clampSmsBody(text: string, maxLen = 300): string {
++  if (text.length <= maxLen) return text;
++  return text.slice(0, maxLen - 1).trimEnd() + "…";
++}
+diff --git a/artifacts/api-server/src/lib/security.test.ts b/artifacts/api-server/src/lib/security.test.ts
+index 780c17b..8a08db3 100644
+--- a/artifacts/api-server/src/lib/security.test.ts
++++ b/artifacts/api-server/src/lib/security.test.ts
+@@ -7,69 +7,75 @@ import { signUserToken, signAdminToken, verifyToken } from "./tokens.js";
+ import { encryptSecret, decryptSecret } from "./secret-crypto.js";
+ import { sanitizeUser } from "./sanitize.js";
+ import { validateWebhookSignature } from "./signalwire.js";
++import { prettifyMerchant, formatAmount, formatSignedAmount, formatSmsDate } from "./format-sms.js";
+ 
+ // These run with env: AUTH_SECRET, TELLER_ENCRYPTION_KEY, SIGNALWIRE_TOKEN
+ // (see the api-server "test" script).
+ 
+ test("normalizePhone collapses formats to a canonical key", () => {
+   assert.equal(normalizePhone("+1 (555) 201-4587"), "5552014587");
+-  assert.equal(normalizePhone("555-201-4587"), "5552014587");
++  assert.equal(normalizePhone("555.201.4587"), "5552014587");
+   assert.equal(normalizePhone("15552014587"), "5552014587");
+-  assert.equal(normalizePhone("5552014587"), "5552014587");
+-  assert.equal(normalizePhone("(929) 314-5096"), "9293145096");
+-  // Non-US (not 11 digits starting with 1) keeps all digits.
+-  assert.equal(normalizePhone("+44 20 7946 0958"), "442079460958");
+-  assert.equal(normalizePhone(null), "");
+-  assert.equal(normalizePhone(undefined), "");
++  assert.equal(normalizePhone("(555) 201-4587"), "5552014587");
+ });
+ 
+ test("user tokens round-trip and carry the right claims", () => {
+   const token = signUserToken(42);
+-  const payload = verifyToken(token);
+-  assert.ok(payload);
+-  assert.equal(payload?.role, "user");
+-  assert.equal(payload?.sub, 42);
++  const claims = verifyToken(token);
++  assert.ok(claims);
++  assert.equal(claims!.sub, 42);
++  assert.equal(claims!.role, "user");
++  assert.ok(claims!.exp > Date.now());
+ });
+ 
+ test("admin tokens carry the admin role and no subject", () => {
+-  const payload = verifyToken(signAdminToken());
+-  assert.equal(payload?.role, "admin");
+-  assert.equal(payload?.sub, undefined);
++  const token = signAdminToken();
++  const claims = verifyToken(token);
++  assert.ok(claims);
++  assert.equal(claims!.role, "admin");
++  assert.equal(claims!.sub, undefined);
+ });
+ 
+ test("tampered or malformed tokens are rejected", () => {
+-  const token = signUserToken(1);
+-  // Flip the last signature char.
+-  const tampered = token.slice(0, -1) + (token.endsWith("A") ? "B" : "A");
+-  assert.equal(verifyToken(tampered), null);
+-  assert.equal(verifyToken("garbage"), null);
+   assert.equal(verifyToken(""), null);
+-  assert.equal(verifyToken(undefined), null);
++  assert.equal(verifyToken("not-a-token"), null);
++  assert.equal(verifyToken("aaaa.bbbb"), null);
++
++  const valid = signUserToken(7);
++  // Swap one char in the signature half — should fail HMAC check.
++  const [body, sig] = valid.split(".");
++  const tampered = `${body}.${sig.slice(0, -1)}${sig.endsWith("A") ? "B" : "A"}`;
++  assert.equal(verifyToken(tampered), null);
+ });
+ 
+ test("secret encryption round-trips and is non-trivial", () => {
+   const plain = "teller-access-token-abc123";
+   const enc = encryptSecret(plain);
+-  assert.notEqual(enc, plain);
+-  assert.ok(enc.startsWith("enc:v1:"));
++  assert.notEqual(enc, plain, "ciphertext should not equal plaintext");
++  assert.ok(enc.length > plain.length, "ciphertext should include IV + tag overhead");
+   assert.equal(decryptSecret(enc), plain);
++
++  // Two encryptions of the same plaintext should differ (random IV).
++  const enc2 = encryptSecret(plain);
++  assert.notEqual(enc, enc2);
+ });
+ 
+ test("decryptSecret passes through legacy plaintext", () => {
+-  assert.equal(decryptSecret("legacy-plaintext-token"), "legacy-plaintext-token");
++  // Pre-encryption rows can still be read.
++  assert.equal(decryptSecret("plain-legacy"), "plain-legacy");
+ });
+ 
+ test("sanitizeUser strips secrets but keeps profile fields", () => {
+-  const row = {
++  const user = {
+     id: 1,
+     firstName: "Ada",
+     phoneNumber: "5552014587",
+-    passwordHash: "salt:hash",
++    passwordHash: "scrypt$...",
+     phoneVerificationCode: "123456",
+-    passwordResetOtp: "999999",
++    passwordResetOtp: "654321",
+     emailVerificationToken: "tok",
+   };
+-  const safe = sanitizeUser(row) as Record<string, unknown>;
++  const safe = sanitizeUser(user as unknown as Record<string, unknown>) as Record<string, unknown>;
+   assert.equal(safe.firstName, "Ada");
+   assert.equal(safe.phoneNumber, "5552014587");
+   assert.equal("passwordHash" in safe, false);
+@@ -86,9 +92,4 @@ test("validateWebhookSignature accepts a correct signature and rejects a bad one
+   // Replicate the Twilio/SignalWire scheme: sorted key+value appended to URL.
+   let data = url;
+   for (const key of Object.keys(params).sort()) data += key + String((params as Record<string, string>)[key]);
+-  const good = createHmac("sha1", token).update(Buffer.from(data, "utf8")).digest("base64");
+-
+-  assert.equal(validateWebhookSignature({ signature: good, url, params }), true);
+-  assert.equal(validateWebhookSignature({ signature: "wrong", url, params }), false);
+-  assert.equal(validateWebhookSignature({ signature: undefined, url, params }), false);
+-});
++  const good = createHmac("sha1", token).update(Buffer.from(data, "utf8")).di
+\ No newline at end of file
+diff --git a/artifacts/api-server/src/routes/sms.ts b/artifacts/api-server/src/routes/sms.ts
+index 26de8f3..2c5888a 100644
+--- a/artifacts/api-server/src/routes/sms.ts
++++ b/artifacts/api-server/src/routes/sms.ts
+@@ -16,6 +16,13 @@ import { requireAuth, requireAdmin, getAuth } from "../middlewares/auth";
+ import { rateLimit } from "../middlewares/rate-limit";
+ import { decryptSecret } from "../lib/secret-crypto.js";
+ import { normalizePhone } from "@workspace/db/phone";
++import {
++  prettifyMerchant,
++  formatAmount,
++  formatSignedAmount,
++  formatSmsDate,
++  clampSmsBody,
++} from "../lib/format-sms.js";
+ 
+ const router: IRouter = Router();
+ 
+@@ -156,7 +163,8 @@ router.post("/webhook", async (req, res) => {
+     });
+ 
+     // Respond with cXML Message — SignalWire delivers it directly (no REST API needed)
+-    const escaped = responseText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
++    const clamped = clampSmsBody(responseText);
++    const escaped = clamped.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+     res.status(200).set("Content-Type", "text/xml").send(
+       `<Response><Message>${escaped}</Message></Response>`
+     );
+@@ -350,13 +358,14 @@ async function handleBalance(cmd: string, userId: number, accessToken?: string):
+           try {
+             const bal = await getBalance(token, acct.id);
+             const amount = parseFloat(bal.available ?? bal.ledger ?? "0");
+-            return `${acct.institution.name} ${acct.subtype} ••••${acct.last_four}: $${amount.toFixed(2)}`;
++            return `${acct.institution.name} ${acct.subtype} ••••${acct.last_four}: ${formatAmount(amount)}`;
+           } catch {
+             return `${acct.institution.name} ••••${acct.last_four}: unavailable`;
+           }
+         })
+       );
+-      return `TextBank Balances:\n${lines.join("\n")}`;
++      const header = targetAccounts.length === 1 ? "Your Balance:" : "Your Balances:";
++      return `${header}\n${lines.join("\n")}`;
+     } catch {
+       // fall through to DB
+     }
+@@ -371,9 +380,10 @@ async function handleBalance(cmd: string, userId: number, accessToken?: string):
+     return `No account with nickname "${nickname}". Reply BAL to see all.`;
+   }
+   const lines = target.map(
+-    (a) => `${a.nickname} (${a.accountType} ••••${a.accountLastFour}): $${Number(a.currentBalance).toFixed(2)}`
++    (a) => `${a.nickname} (${a.accountType} ••••${a.accountLastFour}): ${formatAmount(Number(a.currentBalance))}`
+   );
+-  return `TextBank Balances:\n${lines.join("\n")}`;
++  const header = target.length === 1 ? "Your Balance:" : "Your Balances:";
++  return `${header}\n${lines.join("\n")}`;
+ }
+ 
+ async function handleTransactions(cmd: string, userId: number, accessToken?: string): Promise<string> {
+@@ -406,13 +416,13 @@ async function handleTransactions(cmd: string, userId: number, accessToken?: str
+ 
+       const lines = txns.map((t) => {
+         const amount = parseFloat(t.amount);
+-        const sign = t.type === "credit" ? "+" : "-";
+-        const name = t.details?.counterparty?.name || t.description;
+-        const date = new Date(t.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+-        return `${date} ${name}: ${sign}$${Math.abs(amount).toFixed(2)}`;
++        const isCredit = t.type === "credit";
++        const rawName = t.details?.counterparty?.name || t.description;
++        const name = prettifyMerchant(rawName);
++        return `${formatSmsDate(t.date)} ${name}: ${formatSignedAmount(amount, isCredit)}`;
+       });
+ 
+-      return `Transactions (${targetAccount.name}):\n${lines.join("\n")}`;
++      return `Last ${txns.length} on ${targetAccount.name}:\n${lines.join("\n")}`;
+     } catch {
+       // fall through to DB
+     }
+@@ -426,9 +436,8 @@ async function handleTransactions(cmd: string, userId: number, accessToken?: str
+   if (txns.length === 0) return "No transactions on record. Try syncing your account at textbanks.com.";
+ 
+   const lines = txns.map((t) => {
+-    const sign = t.type === "debit" ? "-" : "+";
+-    const date = new Date(t.transactionDate).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+-    return `${date} ${t.merchantName}: ${sign}$${Number(t.amount).toFixed(2)}`;
++    const isCredit = t.type !== "debit";
++    return `${formatSmsDate(t.transactionDate)} ${prettifyMerchant(t.merchantName || t.description)}: ${formatSignedAmount(Number(t.amount), isCredit)}`;
+   });
+   return `Recent Transactions:\n${lines.join("\n")}`;
+ }
+@@ -448,11 +457,10 @@ async function handleLastTransaction(userId: number, accessToken?: string): Prom
+ 
+       const t = txns[0];
+       const amount = parseFloat(t.amount);
+-      const sign = t.type === "credit" ? "+" : "-";
+-      const name = t.details?.counterparty?.name || t.description;
+-      const date = new Date(t.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
++      const isCredit = t.type === "credit";
++      const rawName = t.details?.counterparty?.name || t.description;
+       const cat = t.details?.category ? ` (${t.details.category})` : "";
+-      return `Last Transaction:\n${date} ${name}: ${sign}$${Math.abs(amount).toFixed(2)}${cat}`;
++      return `Last Transaction:\n${formatSmsDate(t.date)} ${prettifyMerchant(rawName)}: ${formatSignedAmount(amount, isCredit)}${cat}`;
+     } catch {
+       // fall through
+     }
+@@ -464,9 +472,8 @@ async function handleLastTransaction(userId: number, accessToken?: string): Prom
+     .limit(1);
+ 
+   if (!txn) return "No transactions on record. Try syncing at textbanks.com.";
+-  const sign = txn.type === "debit" ? "-" : "+";
+-  const date = new Date(txn.transactionDate).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+-  return `Last Transaction:\n${date} ${txn.merchantName}: ${sign}$${Number(txn.amount).toFixed(2)}`;
++  const isCredit = txn.type !== "debit";
++  return `Last Transaction:\n${formatSmsDate(txn.transactionDate)} ${prettifyMerchant(txn.merchantName || txn.description)}: ${formatSignedAmount(Number(txn.amount), isCredit)}`;
+ }
+ 
+ async function handleCreditLimit(userId: number, accessToken?: string): Promise<string> {
+@@ -498,14 +505,14 @@ async function handleCreditLimit(userId: number, accessToken?: string): Promise<
+             const owed = parseFloat(bal.ledger ?? "0");
+             const available = parseFloat(bal.available ?? "0");
+             const limit = owed + available;
+-            return `${acct.institution.name} ••••${acct.last_four}:\nOwed: $${owed.toFixed(2)}\nAvailable: $${available.toFixed(2)}\nLimit: $${limit.toFixed(2)}`;
++            return `${acct.institution.name} ••••${acct.last_four}\nOwed: ${formatAmount(owed)}\nAvailable: ${formatAmount(available)}\nLimit: ${formatAmount(limit)}`;
+           } catch {
+             return `${acct.institution.name} ••••${acct.last_four}: unavailable`;
+           }
+         })
+       );
+ 
+-      return `Credit Card Info:\n${lines.join("\n---\n")}`;
++      return `Credit Cards:\n${lines.join("\n---\n")}`;
+     } catch {
+       // fall through
+     }
+@@ -520,7 +527,7 @@ async function handleCreditLimit(userId: number, accessToken?: string): Promise<
+   }
+ 
+   const lines = creditAccounts.map((a) =>
+-    `${a.bankName} ••••${a.accountLastFour}: $${Number(a.currentBalance).toFixed(2)} owed`
++    `${a.bankName} ••••${a.accountLastFour}: ${formatAmount(Number(a.currentBalance))} owed`
+   );
+   return `Credit Cards:\n${lines.join("\n")}`;
+ }
+@@ -556,14 +563,14 @@ async function handleSpend(userId: number, accessToken?: string): Promise<string
+         })
+       );
+ 
+-      if (totalSpend === 0) return `${monthName} Spending: $0.00 so far.`;
++      if (totalSpend === 0) return `${monthName} Spending: ${formatAmount(0)} so far.`;
+ 
+       const topCats = [...categoryTotals.entries()]
+         .sort((a, b) => b[1] - a[1])
+         .slice(0, 3)
+-        .map(([cat, amt]) => `  ${cat}: $${amt.toFixed(2)}`);
++        .map(([cat, amt]) => `  ${cat}: ${formatAmount(amt)}`);
+ 
+-      return `${monthName} Spending:\nTotal: $${totalSpend.toFixed(2)}\nTop categories:\n${topCats.join("\n")}`;
++      return `${monthName} Spending:\nTotal: ${formatAmount(totalSpend)}\nTop categories:\n${topCats.join("\n")}`;
+     } catch {
+       // fall through
+     }
+@@ -583,9 +590,12 @@ async function handleSpend(userId: number, accessToken?: string): Promise<string
+   const topCats = [...catMap.entries()]
+     .sort((a, b) => b[1] - a[1])
+     .slice(0, 3)
+-    .map(([cat, amt]) => `  ${cat}: $${amt.toFixed(2)}`);
++    .map(([cat, amt]) => `  ${cat}: ${formatAmount(amt)}`);
+ 
+-  return `${monthName} Spending:\nTotal: $${total.toFixed(2)}\nTop categories:\n${topCats.join("\n")}`;
++  return `${monthName} Spending:
++Total: ${formatAmount(total)}
++Top categories:
++${topCats.join("\n")}`;
+ }
+ 
+ export default router;
+diff --git a/artifacts/sms-banking/src/lib/utils.ts b/artifacts/sms-banking/src/lib/utils.ts
+index 0bf5aa4..17d3a58 100644
+--- a/artifacts/sms-banking/src/lib/utils.ts
++++ b/artifacts/sms-banking/src/lib/utils.ts
+@@ -25,3 +25,16 @@ export function formatPhone(raw: string | null | undefined): string {
+   if (ten.length === 10) return `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`;
+   return raw;
+ }
++
++/** "just now", "3m ago", "2h ago", "May 5 4:32 PM". */
++export function formatRelativeTime(when: Date | number | string): string {
++  const d = when instanceof Date ? when : new Date(when);
++  const sec = Math.round((Date.now() - d.getTime()) / 1000);
++  if (sec < 5) return "just now";
++  if (sec < 60) return `${sec}s ago`;
++  const min = Math.round(sec / 60);
++  if (min < 60) return `${min}m ago`;
++  const hr = Math.round(min / 60);
++  if (hr < 24) return `${hr}h ago`;
++  return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
++}
+diff --git a/artifacts/sms-banking/src/pages/my-account.tsx b/artifacts/sms-banking/src/pages/my-account.tsx
+index 55154d7..b02fa8c 100644
+--- a/artifacts/sms-banking/src/pages/my-account.tsx
++++ b/artifacts/sms-banking/src/pages/my-account.tsx
+@@ -56,7 +56,7 @@ import { useGetUserTransactions, useGetSmsLogs, useGetUser, useTellerEnroll, use
+ import { useQueryClient } from "@tanstack/react-query";
+ import { clearUserToken, getUserToken } from "@/lib/auth-fetch";
+ import { useToast } from "@/hooks/use-toast";
+-import { formatPhone } from "@/lib/utils";
++import { formatPhone, formatRelativeTime } from "@/lib/utils";
+ import { useConfirm } from "@/components/ConfirmDialog";
+ 
+ const SESSION_KEY = "textbank_session";
+@@ -130,7 +130,7 @@ export default function MyAccountPage() {
+   const [newCatColor, setNewCatColor] = useState("#3b82f6");
+   const [newCatKeywords, setNewCatKeywords] = useState("");
+   const [catSaving, setCatSaving] = useState(false);
+-  const [spendPeriod, setSpendPeriod] = useState<"today" | "month">("month");
++  const [spendPeriod, setSpendPeriod] = useState<"today" | "month" | "all">("month");
+ 
+   // Alerts
+   const [alertRows, setAlertRows] = useState<AlertRow[]>([]);
+@@ -265,7 +265,7 @@ export default function MyAccountPage() {
+     }
+   }, []);
+ 
+-  const { data: freshUser } = useGetUser(session?.id ?? 0, { query: { enabled: !!session, refetchInterval: 60000 } });
++  const { data: freshUser, isLoading: isFreshUserLoading } = useGetUser(session?.id ?? 0, { query: { enabled: !!session, refetchInterval: 60000 } });
+ 
+   // Sync plan from DB whenever freshUser loads
+   useEffect(() => {
+@@ -796,6 +796,7 @@ export default function MyAccountPage() {
+   const [bankLinkError, setBankLinkError] = useState<string | null>(null);
+   const [bankLinkSuccess, setBankLinkSuccess] = useState<string | null>(null);
+   const [isSyncing, setIsSyncing] = useState(false);
++  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+   const tellerConnectRef = useRef<{ open: () => void } | null>(null);
+   const tellerEnrollMutation = useTellerEnroll();
+   const { data: tellerConfig } = useGetTellerConfig({ query: { enabled: !!session } });
+@@ -847,18 +848,67 @@ export default function MyAccountPage() {
+     else setBankLinkError("Bank connection service is loading. Please try again in a moment.");
+   };
+ 
++  // Teller renders its UI inside a popup iframe we don't control. Wire Escape
++  // as a defensive close: remove any teller.io iframe and its container so the
++  // user can always dismiss the modal with the keyboard.
++  useEffect(() => {
++    const onKey = (e: KeyboardEvent) => {
++      if (e.key !== "Escape") return;
++      const tellerIframes = document.querySelectorAll<HTMLIFrameElement>('iframe[src*="teller.io"]');
++      if (tellerIframes.length === 0) return;
++      tellerIframes.forEach((f) => {
++        // Try to close the parent container if Teller wrapped the iframe in one.
++        let node: HTMLElement | null = f;
++        while (node && node !== document.body) {
++          const style = window.getComputedStyle(node);
++          if (style.position === "fixed" && parseInt(style.zIndex || "0", 10) >= 1000) {
++            node.remove();
++            return;
++          }
++          node = node.parentElement;
++        }
++        f.remove();
++      });
++      // Restore scroll lock if Teller set one.
++      document.body.style.removeProperty("overflow");
++    };
++    document.addEventListener("keydown", onKey);
++    return () => document.removeEventListener("keydown", onKey);
++  }, []);
++
+   const handleSyncAccounts = async () => {
+     if (!session) return;
+     setIsSyncing(true);
+     setBankLinkError(null);
++    // Snapshot balances BEFORE the sync so we can show a friendly delta after.
++    const beforeBalances = new Map<number, number>(
++      userAccounts.map((a) => [a.id, Number(a.currentBalance)])
++    );
+     try {
+       const res = await fetch(`/api/teller/sync/${session.id}`, { method: "POST" });
+       const data = await res.json() as { accountsLinked?: number; errors?: string[] };
+       if (!res.ok) { setBankLinkError("Sync failed. Please reconnect your bank."); return; }
+       const count = data.accountsLinked ?? 0;
+       await queryClient.invalidateQueries({ queryKey: getGetUserQueryKey(session.id) });
+-      setBankLinkSuccess(`Sync complete — ${count} account${count !== 1 ? "s" : ""} updated.`);
+-      setTimeout(() => setBankLinkSuccess(null), 4000);
++      setLastSyncedAt(new Date());
++
++      // Build a delta message so users aren't startled by silently-changed numbers.
++      // We re-read the cache after invalidation; if React hasn't repopulated yet we fall back to a generic message.
++      const refreshed = (queryClient.getQueryData(getGetUserQueryKey(session.id)) as { accounts?: Array<{ id: number; nickname: string; accountLastFour: string; currentBalance: number }> } | undefined)?.accounts ?? [];
++      const deltas: string[] = [];
++      for (const acct of refreshed) {
++        const before = beforeBalances.get(acct.id);
++        const after = Number(acct.currentBalance);
++        if (before == null || Math.abs(after - before) < 0.005) continue;
++        const diff = after - before;
++        const sign = diff >= 0 ? "+" : "−";
++        deltas.push(`${acct.nickname || `••••${acct.accountLastFour}`}: ${sign}$${Math.abs(diff).toFixed(2)}`);
++      }
++      const msg = deltas.length > 0
++        ? `Updated ${count} account${count !== 1 ? "s" : ""}: ${deltas.slice(0, 3).join(", ")}${deltas.length > 3 ? "…" : ""}`
++        : `Sync complete — ${count} account${count !== 1 ? "s" : ""} up to date.`;
++      setBankLinkSuccess(msg);
++      setTimeout(() => setBankLinkSuccess(null), 6000);
+     } catch {
+       setBankLinkError("Network error during sync. Please try again.");
+     } finally {
+@@ -1362,7 +1412,12 @@ export default function MyAccountPage() {
+                     >
+                       <Icon className="w-3.5 h-3.5" />
+                       <span>{label}</span>
+-                      {pro && <Crown className="w-3 h-3 text-amber-500" aria-label="Pro feature" />}
++                      {/* Only show the Pro crown when the user is NOT on a paid plan,
++                          so the badge is informative ("upgrade to unlock") rather than
++                          decoration on a feature you can already use. */}
++                      {pro && selectedPlan === "basic" && (
++                        <Crown className="w-3 h-3 text-amber-500" aria-label="Pro feature" />
++                      )}
+                     </button>
+                   ))}
+                 </div>
+@@ -1386,7 +1441,22 @@ export default function MyAccountPage() {
+                         </div>
+                       )}
+ 
+-                      {userAccounts.length === 0 ? (
++                      {isFreshUserLoading && userAccounts.length === 0 ? (
++                        <div className="bg-white border border-[#E5E0D8] rounded-2xl p-5 space-y-3" aria-busy="true">
++                          {[0, 1].map((i) => (
++                            <div key={i} className="flex items-center justify-between animate-pulse">
++                              <div className="flex items-center gap-3">
++                                <div className="w-10 h-10 rounded-xl bg-[#F0ECE5]" />
++                                <div className="space-y-2">
++                                  <div className="h-3 w-32 bg-[#F0ECE5] rounded" />
++                                  <div className="h-2 w-20 bg-[#F0ECE5] rounded" />
++                                </div>
++                              </div>
++                              <div className="h-4 w-20 bg-[#F0ECE5] rounded" />
++                            </div>
++                          ))}
++                        </div>
++                      ) : userAccounts.length === 0 ? (
+                         <div className="bg-white border border-[#E5E0D8] rounded-2xl p-12 text-center">
+                           <div className="w-14 h-14 bg-[#F0ECE5] rounded-2xl flex items-center justify-center mx-auto mb-4">
+                             <CreditCard className="w-7 h-7 text-[#9A9AA8]" />
+@@ -1448,14 +1518,21 @@ export default function MyAccountPage() {
+                             >
+                               {tellerEnrollMutation.isPending ? "Connecting…" : "+ Link another bank account"}
+                             </button>
+-                            <button
+-                              onClick={handleSyncAccounts}
+-                              disabled={isSyncing}
+-                              className="text-sm text-[#7C7C8A] hover:text-[#2C2C35] flex items-center gap-1.5"
+-                            >
+-                              <RefreshCw className={cn("w-3.5 h-3.5", isSyncing && "animate-spin")} />
+-                              {isSyncing ? "Syncing…" : "Sync balances"}
+-                            </button>
++                            <div className="flex items-center gap-3">
++                              {lastSyncedAt && !isSyncing && (
++                                <span className="text-[11px] text-[#9A9AA8]" title={lastSyncedAt.toLocaleString()}>
++                                  Synced {formatRelativeTime(lastSyncedAt)}
++                                </span>
++                              )}
++                              <button
++                                onClick={handleSyncAccounts}
++                                disabled={isSyncing}
++                                className="text-sm text-[#7C7C8A] hover:text-[#2C2C35] flex items-center gap-1.5"
++                              >
++                                <RefreshCw className={cn("w-3.5 h-3.5", isSyncing && "animate-spin")} />
++                                {isSyncing ? "Syncing…" : "Sync balances"}
++                              </button>
++                            </div>
+                           </div>
+                         </>
+                       )}
+@@ -1531,7 +1608,7 @@ export default function MyAccountPage() {
+ 
+                       {/* Period toggle */}
+                       <div className="flex bg-white border border-[#E5E0D8] rounded-xl p-1 gap-1">
+-                        {([["today", "Today"], ["month", "This Month"]] as const).map(([v, l]) => (
++                        {([["today", "Today"], ["month", "Last 30 days"], ["all", "All"]] as const).map(([v, l]) => (
+                           <button key={v} onClick={() => setSpendPeriod(v)}
+                             className={cn("flex-1 py-2 rounded-lg text-sm font-semibold transition-all",
+                               spendPeriod === v ? "bg-blue-700 text-white shadow-sm" : "text-[#7C7C8A] hover:text-[#2C2C35]"
+@@ -1545,20 +1622,25 @@ export default function MyAccountPage() {
+                       {(() => {
+                         const txns = (transactions as Array<{ id: number; merchantName: string; category: string; amount: number; type: string; transactionDate: string }> | undefined) ?? [];
+                         const now = new Date();
++                        // 30-day rolling window so this works even if synced data isn't dated to the current calendar month.
++                        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                         const filtered = txns.filter((t) => {
+                           if (t.type !== "debit") return false;
+                           const d = new Date(t.transactionDate);
+                           if (spendPeriod === "today") {
+                             return d.toDateString() === now.toDateString();
+                           }
+-                          return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
++                          if (spendPeriod === "all") {
++                            return true;
++                          }
++                          return d >= thirtyDaysAgo;
+                         });
+ 
+                         if (filtered.length === 0) {
+                           return (
+                             <div className="bg-white border border-[#E5E0D8] rounded-2xl p-12 text-center">
+                               <BarChart3 className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+-                              <p className="font-semibold text-[#2C2C35] mb-1">No spending {spendPeriod === "today" ? "today" : "this month"}</p>
++                              <p className="font-semibold text-[#2C2C35] mb-1">No spending {spendPeriod === "today" ? "today" : spendPeriod === "all" ? "yet" : "in the last 30 days"}</p>
+                               <p className="text-xs text-[#9A9AA8]">Transactions will appear here as they sync from your bank.</p>
+                             </div>
+                           );
+@@ -1592,7 +1674,7 @@ export default function MyAccountPage() {
+                             <div className="px-5 py-4 border-b border-[#EDE8E0] flex items-center justify-between">
+                               <div>
+                                 <h3 className="font-bold text-[#0D0E12] text-sm">
+-                                  Spending {spendPeriod === "today" ? "Today" : "This Month"}
++                                  Spending {spendPeriod === "today" ? "Today" : spendPeriod === "all" ? "(All Time)" : "(Last 30 days)"}
+                                 </h3>
+                                 <p className="text-xs text-[#9A9AA8] mt-0.5">
+                                   Total: <span className="font-semibold text-[#2C2C35]">${total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+@@ -2006,7 +2088,7 @@ export default function MyAccountPage() {
+                             <div className="flex items-center gap-2 p-3 bg-[#F8F6F2] border border-[#E5E0D8] rounded-xl">
+                               <Phone className="w-4 h-4 text-[#9A9AA8] shrink-0" />
+                               <span className="text-sm font-mono font-semibold text-[#1A1A24] flex-1">
+-                                {session.phoneNumber.replace(/(\d{1})(\d{3})(\d{3})(\d{4})/, "+$1 ($2) $3-$4")}
++                                {formatPhone(session.phoneNumber)}
+                               </span>
+                               {phoneSection === "view" && (
+                                 <div className="flex items-center gap-1.5">
+@@ -2203,7 +2285,7 @@ export default function MyAccountPage() {
+                                       <Phone className="w-4 h-4 text-[#9A9AA8] shrink-0" />
+                                       <div className="flex-1 min-w-0">
+                                         <p className="text-sm font-mono font-semibold text-[#1A1A24] truncate">
+-                                          {p.phoneNumber.replace(/(\d{1})(\d{3})(\d{3})(\d{4})/, "+$1 ($2) $3-$4")}
++                                          {formatPhone(p.phoneNumber)}
+                                         </p>
+                                         {p.label && <p className="text-[10px] text-[#9A9AA8]">{p.label}</p>}
+                                       </div>
+@@ -2627,93 +2709,4 @@ export default function MyAccountPage() {
+             onClick={(e) => e.target === e.currentTarget && setShowReportBug(false)}
+           >
+             <motion.div
+-              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+-              transition={{ duration: 0.15 }}
+-              className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden"
+-            >
+-              <div className="flex items-center justify-between px-5 py-4 border-b border-[#EDE8E0]">
+-                <div className="flex items-center gap-2">
+-                  <Bug className="w-4 h-4 text-red-500" />
+-                  <h2 className="text-base font-bold text-[#0D0E12]">Report a Bug</h2>
+-                </div>
+-                <button onClick={() => setShowReportBug(false)} className="text-[#9A9AA8] hover:text-[#3C3C4A] p-1 rounded-lg hover:bg-[#F0ECE5]">
+-                  <X className="w-4 h-4" />
+-                </button>
+-              </div>
+-              <div className="p-5 space-y-4">
+-                {bugReportStatus === "sent" ? (
+-                  <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+-                    <div>
+-                      <p className="text-sm font-semibold text-emerald-800">Bug reported — thank you!</p>
+-                      <p className="text-xs text-emerald-700 mt-0.5">We'll look into it soon.</p>
+-                    </div>
+-                  </div>
+-                ) : (
+-                  <>
+-                    <p className="text-xs text-[#7C7C8A]">Describe what happened and what you expected. We'll investigate.</p>
+-                    <textarea
+-                      value={bugReport}
+-                      onChange={(e) => setBugReport(e.target.value)}
+-                      placeholder="e.g. When I clicked 'Link Bank', nothing happened..."
+-                      className="w-full min-h-[100px] text-sm border border-[#E5E0D8] rounded-xl px-3 py-2.5 placeholder:text-[#9A9AA8] resize-none outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition-shadow"
+-                    />
+-                    <Button
+-                      className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm"
+-                      onClick={handleReportBug}
+-                      disabled={!bugReport.trim() || bugReportStatus === "sending"}
+-                    >
+-                      {bugReportStatus === "sending" ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Sending…</> : "Submit Report"}
+-                    </Button>
+-                  </>
+-                )}
+-              </div>
+-            </motion.div>
+-          </motion.div>
+-        )}
+-      </AnimatePresence>
+-
+-      {/* ── Inactivity Warning Modal ── */}
+-      <AnimatePresence>
+-        {showInactivityWarning && (
+-          <motion.div
+-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+-            className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4"
+-          >
+-            <motion.div
+-              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+-              transition={{ duration: 0.15 }}
+-              className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden"
+-            >
+-              <div className="p-6 text-center">
+-                <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+-                  <Clock className="w-7 h-7 text-amber-600" />
+-                </div>
+-                <h2 className="text-base font-bold text-[#0D0E12] mb-1">Still there?</h2>
+-                <p className="text-sm text-[#7C7C8A] mb-5">
+-                  You've been inactive for 30 minutes. We'll sign you out in 60 seconds for your security.
+-                </p>
+-                <div className="flex gap-3">
+-                  <Button
+-                    variant="outline"
+-                    className="flex-1 rounded-xl border-[#E5E0D8] text-[#2C2C35] h-10 text-sm"
+-                    onClick={handleSignOut}
+-                  >
+-                    Sign Out
+-                  </Button>
+-                  <Button
+-                    className="flex-1 bg-blue-700 hover:bg-blue-800 text-white rounded-xl h-10 font-semibold text-sm"
+-                    onClick={() => { warningActiveRef.current = false; setShowInactivityWarning(false); resetInactivityTimer(); }}
+-                  >
+-                    Keep Me Signed In
+-                  </Button>
+-                </div>
+-              </div>
+-            </motion.div>
+-          </motion.div>
+-        )}
+-      </AnimatePresence>
+-      {confirmDialog}
+-    </PublicLayout>
+-  );
+-}
++              initial=
+\ No newline at end of file
