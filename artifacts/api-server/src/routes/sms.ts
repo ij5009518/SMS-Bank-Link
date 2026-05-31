@@ -16,6 +16,13 @@ import { requireAuth, requireAdmin, getAuth } from "../middlewares/auth";
 import { rateLimit } from "../middlewares/rate-limit";
 import { decryptSecret } from "../lib/secret-crypto.js";
 import { normalizePhone } from "@workspace/db/phone";
+import {
+  prettifyMerchant,
+  formatAmount,
+  formatSignedAmount,
+  formatSmsDate,
+  clampSmsBody,
+} from "../lib/format-sms.js";
 
 const router: IRouter = Router();
 
@@ -156,7 +163,8 @@ router.post("/webhook", async (req, res) => {
     });
 
     // Respond with cXML Message — SignalWire delivers it directly (no REST API needed)
-    const escaped = responseText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const clamped = clampSmsBody(responseText);
+    const escaped = clamped.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     res.status(200).set("Content-Type", "text/xml").send(
       `<Response><Message>${escaped}</Message></Response>`
     );
@@ -350,13 +358,14 @@ async function handleBalance(cmd: string, userId: number, accessToken?: string):
           try {
             const bal = await getBalance(token, acct.id);
             const amount = parseFloat(bal.available ?? bal.ledger ?? "0");
-            return `${acct.institution.name} ${acct.subtype} ••••${acct.last_four}: $${amount.toFixed(2)}`;
+            return `${acct.institution.name} ${acct.subtype} ••••${acct.last_four}: ${formatAmount(amount)}`;
           } catch {
             return `${acct.institution.name} ••••${acct.last_four}: unavailable`;
           }
         })
       );
-      return `TextBank Balances:\n${lines.join("\n")}`;
+      const header = targetAccounts.length === 1 ? "Your Balance:" : "Your Balances:";
+      return `${header}\n${lines.join("\n")}`;
     } catch {
       // fall through to DB
     }
@@ -371,9 +380,10 @@ async function handleBalance(cmd: string, userId: number, accessToken?: string):
     return `No account with nickname "${nickname}". Reply BAL to see all.`;
   }
   const lines = target.map(
-    (a) => `${a.nickname} (${a.accountType} ••••${a.accountLastFour}): $${Number(a.currentBalance).toFixed(2)}`
+    (a) => `${a.nickname} (${a.accountType} ••••${a.accountLastFour}): ${formatAmount(Number(a.currentBalance))}`
   );
-  return `TextBank Balances:\n${lines.join("\n")}`;
+  const header = target.length === 1 ? "Your Balance:" : "Your Balances:";
+  return `${header}\n${lines.join("\n")}`;
 }
 
 async function handleTransactions(cmd: string, userId: number, accessToken?: string): Promise<string> {
@@ -406,13 +416,13 @@ async function handleTransactions(cmd: string, userId: number, accessToken?: str
 
       const lines = txns.map((t) => {
         const amount = parseFloat(t.amount);
-        const sign = t.type === "credit" ? "+" : "-";
-        const name = t.details?.counterparty?.name || t.description;
-        const date = new Date(t.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        return `${date} ${name}: ${sign}$${Math.abs(amount).toFixed(2)}`;
+        const isCredit = t.type === "credit";
+        const rawName = t.details?.counterparty?.name || t.description;
+        const name = prettifyMerchant(rawName);
+        return `${formatSmsDate(t.date)} ${name}: ${formatSignedAmount(amount, isCredit)}`;
       });
 
-      return `Transactions (${targetAccount.name}):\n${lines.join("\n")}`;
+      return `Last ${txns.length} on ${targetAccount.name}:\n${lines.join("\n")}`;
     } catch {
       // fall through to DB
     }
@@ -426,9 +436,8 @@ async function handleTransactions(cmd: string, userId: number, accessToken?: str
   if (txns.length === 0) return "No transactions on record. Try syncing your account at textbanks.com.";
 
   const lines = txns.map((t) => {
-    const sign = t.type === "debit" ? "-" : "+";
-    const date = new Date(t.transactionDate).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    return `${date} ${t.merchantName}: ${sign}$${Number(t.amount).toFixed(2)}`;
+    const isCredit = t.type !== "debit";
+    return `${formatSmsDate(t.transactionDate)} ${prettifyMerchant(t.merchantName || t.description)}: ${formatSignedAmount(Number(t.amount), isCredit)}`;
   });
   return `Recent Transactions:\n${lines.join("\n")}`;
 }
@@ -448,11 +457,10 @@ async function handleLastTransaction(userId: number, accessToken?: string): Prom
 
       const t = txns[0];
       const amount = parseFloat(t.amount);
-      const sign = t.type === "credit" ? "+" : "-";
-      const name = t.details?.counterparty?.name || t.description;
-      const date = new Date(t.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const isCredit = t.type === "credit";
+      const rawName = t.details?.counterparty?.name || t.description;
       const cat = t.details?.category ? ` (${t.details.category})` : "";
-      return `Last Transaction:\n${date} ${name}: ${sign}$${Math.abs(amount).toFixed(2)}${cat}`;
+      return `Last Transaction:\n${formatSmsDate(t.date)} ${prettifyMerchant(rawName)}: ${formatSignedAmount(amount, isCredit)}${cat}`;
     } catch {
       // fall through
     }
@@ -464,9 +472,8 @@ async function handleLastTransaction(userId: number, accessToken?: string): Prom
     .limit(1);
 
   if (!txn) return "No transactions on record. Try syncing at textbanks.com.";
-  const sign = txn.type === "debit" ? "-" : "+";
-  const date = new Date(txn.transactionDate).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  return `Last Transaction:\n${date} ${txn.merchantName}: ${sign}$${Number(txn.amount).toFixed(2)}`;
+  const isCredit = txn.type !== "debit";
+  return `Last Transaction:\n${formatSmsDate(txn.transactionDate)} ${prettifyMerchant(txn.merchantName || txn.description)}: ${formatSignedAmount(Number(txn.amount), isCredit)}`;
 }
 
 async function handleCreditLimit(userId: number, accessToken?: string): Promise<string> {
@@ -498,14 +505,14 @@ async function handleCreditLimit(userId: number, accessToken?: string): Promise<
             const owed = parseFloat(bal.ledger ?? "0");
             const available = parseFloat(bal.available ?? "0");
             const limit = owed + available;
-            return `${acct.institution.name} ••••${acct.last_four}:\nOwed: $${owed.toFixed(2)}\nAvailable: $${available.toFixed(2)}\nLimit: $${limit.toFixed(2)}`;
+            return `${acct.institution.name} ••••${acct.last_four}\nOwed: ${formatAmount(owed)}\nAvailable: ${formatAmount(available)}\nLimit: ${formatAmount(limit)}`;
           } catch {
             return `${acct.institution.name} ••••${acct.last_four}: unavailable`;
           }
         })
       );
 
-      return `Credit Card Info:\n${lines.join("\n---\n")}`;
+      return `Credit Cards:\n${lines.join("\n---\n")}`;
     } catch {
       // fall through
     }
@@ -520,7 +527,7 @@ async function handleCreditLimit(userId: number, accessToken?: string): Promise<
   }
 
   const lines = creditAccounts.map((a) =>
-    `${a.bankName} ••••${a.accountLastFour}: $${Number(a.currentBalance).toFixed(2)} owed`
+    `${a.bankName} ••••${a.accountLastFour}: ${formatAmount(Number(a.currentBalance))} owed`
   );
   return `Credit Cards:\n${lines.join("\n")}`;
 }
@@ -556,14 +563,14 @@ async function handleSpend(userId: number, accessToken?: string): Promise<string
         })
       );
 
-      if (totalSpend === 0) return `${monthName} Spending: $0.00 so far.`;
+      if (totalSpend === 0) return `${monthName} Spending: ${formatAmount(0)} so far.`;
 
       const topCats = [...categoryTotals.entries()]
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3)
-        .map(([cat, amt]) => `  ${cat}: $${amt.toFixed(2)}`);
+        .map(([cat, amt]) => `  ${cat}: ${formatAmount(amt)}`);
 
-      return `${monthName} Spending:\nTotal: $${totalSpend.toFixed(2)}\nTop categories:\n${topCats.join("\n")}`;
+      return `${monthName} Spending:\nTotal: ${formatAmount(totalSpend)}\nTop categories:\n${topCats.join("\n")}`;
     } catch {
       // fall through
     }
@@ -583,9 +590,12 @@ async function handleSpend(userId: number, accessToken?: string): Promise<string
   const topCats = [...catMap.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
-    .map(([cat, amt]) => `  ${cat}: $${amt.toFixed(2)}`);
+    .map(([cat, amt]) => `  ${cat}: ${formatAmount(amt)}`);
 
-  return `${monthName} Spending:\nTotal: $${total.toFixed(2)}\nTop categories:\n${topCats.join("\n")}`;
+  return `${monthName} Spending:
+Total: ${formatAmount(total)}
+Top categories:
+${topCats.join("\n")}`;
 }
 
 export default router;

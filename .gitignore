@@ -56,3 +56,4 @@ Thumbs.db
 # Teller mTLS certificates (sensitive — do not commit)
 artifacts/api-server/certs/
 attached_assets/*.pem
+textbanks-fixes.patch
